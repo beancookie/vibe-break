@@ -11,6 +11,7 @@ import {
 } from "@pixiv/three-vrm-animation";
 import type { VRMExpressionPresetName } from "@pixiv/three-vrm-core";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { resolveResource } from "@tauri-apps/api/path";
 
 // ----- VRM / VRMA lists (edit to add or change models / animations) -----
 const VRMS: { name: string; url: string }[] = [
@@ -38,11 +39,18 @@ const VRM_EXPRESSIONS: VRMExpressionPresetName[] = [
   "aa", "ih", "ou", "ee", "oh",
 ];
 
-// In Tauri the WebView can't `fetch()` relative paths directly —
-// `convertFileSrc` translates "assets/foo.vrm" into a `tauri://` URL
-// that the asset protocol serves.
+// In Tauri the WebView can't `fetch()` relative paths directly. We resolve
+// the resource path (declared in `tauri.conf.json` → `bundle.resources`)
+// to an absolute path on disk, then convert it to a `tauri://` URL.
 const tauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const assetUrl = (url: string) => (tauri ? convertFileSrc(url) : "/" + url);
+
+async function assetUrl(url: string): Promise<string> {
+  if (tauri) {
+    const abs = await resolveResource(url);
+    return convertFileSrc(abs);
+  }
+  return "/" + url;
+}
 
 // ----- Refs to DOM and runtime state -----
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -76,7 +84,7 @@ const exprRows = ref<ExprRow[]>([]);
 async function loadVRM(url: string): Promise<VRM> {
   const loader = new GLTFLoader();
   loader.register((p) => new VRMLoaderPlugin(p));
-  const gltf = await loader.loadAsync(assetUrl(url));
+  const gltf = await loader.loadAsync(await assetUrl(url));
   const vrm = gltf.userData.vrm as VRM | undefined;
   if (!vrm) throw new Error(`No VRM in ${url}`);
   VRMUtils.rotateVRM0(vrm);
@@ -86,7 +94,7 @@ async function loadVRM(url: string): Promise<VRM> {
 async function loadVRMA(url: string): Promise<VRMAnimation> {
   const loader = new GLTFLoader();
   loader.register((p) => new VRMAnimationLoaderPlugin(p));
-  const gltf = await loader.loadAsync(assetUrl(url));
+  const gltf = await loader.loadAsync(await assetUrl(url));
   const arr = gltf.userData.vrmAnimations as VRMAnimation[] | undefined;
   if (!arr || arr.length === 0) throw new Error(`No VRMAnimation in ${url}`);
   return arr[0];
