@@ -1,209 +1,127 @@
-# 🎮 Vibe Break — 最终技术方案
+# 🎮 Vibe Break — VRM Viewer (Web 架构)
 
-一份面向程序员的趣味工具箱方案，将 AI 编程助手的思考过程实时可视化为 3D 互动场景。
+将 3D 角色作为 Web 应用展示，使用 `three.js` + `@pixiv/three-vrm` 在浏览器中加载和显示 VRM 模型。
+
+> **注**：早期版本是 Rust + Bevy 的单文件原生桌面程序。考虑到 `bevy_vrm` 对 VRM 0.x 材质（MToon 透明 / Alpha Blend）渲染存在已知问题（眼睛被误剔除），整个前端栈迁移到 Web 端，使用 VRM 社区标准加载器 `@pixiv/three-vrm`，对 VRM 0.x / 1.x 都有成熟的 MToon 着色实现。
 
 ## 📌 一、项目概述
 
-Vibe Break 是一款为习惯终端工作的程序员设计的趣味工具箱，核心价值在于将等待 AI 生成代码、编译、部署等碎片时间转化为带有视觉娱乐反馈的轻松时刻。
+Vibe Break 是一个**浏览器内运行的 VRM 角色查看器**，将等待 AI 生成代码、编译、部署等碎片时间的视觉娱乐反馈交给 Web 端处理。
 
-项目以**统一的 Rust 可执行文件**形态交付，将 Bevy 3D 引擎与 MCP 服务器嵌入同一进程，与 Claude Code 通过 MCP 协议深度集成，实时捕获 AI 的工作状态并驱动 3D 画面做出对应反馈。
+- **轻量** — 双击 `index.html`（或运行 `npm run dev`）即可使用
+- **跨平台** — 任何现代浏览器（Chrome / Edge / Firefox / Safari）
+- **零运行时依赖** — 用户只需浏览器，无需安装额外软件
 
-## 🎯 二、核心功能
+## 🎯 二、核心功能（当前阶段）
 
 | 功能 | 说明 |
 |------|------|
-| 实时状态可视化 | Claude Code 思考、改文件、执行命令时，3D 场景自动切换对应动画 |
-| 摸鱼新闻弹幕 | 滚动显示程序员梗段子，可选内置段子 / 真实热搜 / AI 生成 |
-| 日志统计日报 | 读取本地历史记录，统计 AI 交互次数、文件修改量、中断频率 |
-| AI 毒舌点评 | 基于统计数据调用大模型，生成幽默风格的开发者日报 |
+| VRM 加载 | 支持 VRM 0.0 和 1.0（自动检测） |
+| OrbitControls | 鼠标拖动旋转、滚轮缩放 |
+| MToon 着色 | 正确处理 VRM 0.x 的 MToon 材质（包括透明的眼睛、睫毛等）|
+| 切换模型 | 通过下拉菜单切换不同 VRM 文件 |
+
+> ⚠️ **未实现（未来扩展）**：实时状态可视化、摸鱼新闻弹幕、AI 毒舌点评。这些需要后端服务（MCP server、日志读取、AI API 调用）配合。
 
 ## 🧩 三、技术选型
 
-- **宿主程序** — Rust，兼顾高性能、跨平台和内存安全
-- **3D 引擎** — Bevy，Rust 生态最活跃的 ECS 架构引擎，原生 glTF 支持，社区驱动
-- **MCP 服务器** — Rust MCP 库（`rust-mcp-sdk` / `turbomcp` / `mcpx`），嵌入宿主进程，无额外运行时
-- **通信协议** — MCP 协议（stdio），宿主进程内直接通信，零 IPC 开销
-- **AI 接口** — 兼容 OpenAI 格式，支持 DeepSeek、通义千问等，用户自带 API Key
-- **3D 模型格式** — glTF（.glb/.gltf）首选，Bevy 原生支持
-- **跨平台策略** — 原生编译，单文件分发，无需任何运行时环境
+| 层 | 选型 | 理由 |
+|----|------|------|
+| 语言 | TypeScript | 类型安全，与 three.js 生态一致 |
+| 构建工具 | Vite 5 | 极快 HMR，零配置 TS，ESM 原生 |
+| 3D 引擎 | three.js (~0.169) | 业界标准 VRM 容器 |
+| VRM 加载器 | @pixiv/three-vrm 2.x | VRM 官方维护，支持 0.x 和 1.x，MToon 着色完整 |
+| 控制器 | three.js OrbitControls | 相机轨道控制，three.js 内置 |
 
 ## 🔄 四、系统架构
 
-架构简化为两个组件：
-
 ```
-┌─────────────────────────────────┐
-│         Vibe Break (Rust)        │
-│  ┌───────────┐  ┌─────────────┐  │
-│  │  Bevy 3D  │  │ MCP Server  │  │
-│  │   引擎     │◄─┤  (内嵌)     │  │
-│  │   + UI    │  │   stdio      │  │
-│  └───────────┘  └──────┬──────┘  │
-│                         │         │
-│  ┌──────────────────────┘         │
-│  │  CLI 层 (日志/配置/AI API)     │
-│  └─────────────────────────────────┘
-│          │ MCP (stdio)
-│          ▼
-│  ┌──────────────┐
-│  │  Claude Code  │
-│  │  (MCP 客户端)  │
-│  └──────────────┘
+┌─────────────────────────────────────┐
+│        Browser (Vite dev/build)     │
+│  ┌──────────────┐  ┌────────────┐   │
+│  │  three.js    │  │ three-vrm  │   │
+│  │  WebGL2      │◄─┤  loader    │   │
+│  │  renderer    │  │  (MToon)   │   │
+│  └──────────────┘  └────────────┘   │
+│         ▲                           │
+│         │ GLTFLoader + VRMLoaderPlugin│
+│         ▼                           │
+│  ┌──────────────────────────┐       │
+│  │  assets/*.vrm (静态资源)  │       │
+│  └──────────────────────────┘       │
+└─────────────────────────────────────┘
 ```
 
-**Vibe Break (Rust)** — 统一应用，内部包含三个逻辑层：
-- **CLI 层** — 读取本地日志、调用 AI API、管理配置、处理命令行参数
-- **MCP Server** — 通过 `rust-mcp-sdk` / `turbomcp` 实现，作为独立线程运行，通过 stdio 与 Claude Code 通信
-- **Bevy 3D 引擎** — 通过 System + Event 模式接收 MCP 层转发的状态事件，驱动 3D 场景动画
-
-**Claude Code** — MCP 客户端，通过 stdio 与宿主进程内的 MCP Server 直连。
-
-### 🦀 Rust MCP 实现路径
-
-Rust 生态中有多个生产级的 MCP 实现：
-
-| 库 | 特点 |
-|----|------|
-| `rust-mcp-sdk` | 功能全面，提供构建 MCP 服务器的完整 API |
-| `turbomcp` | 高性能，异步优先 |
-| `mcpx` | 极简，轻量 |
-
-选择任一库在 Rust 中实现 MCP Server，然后通过 **Bevy Event + System** 驱动游戏循环：
-
-```rust
-#[derive(Event)]
-enum MCPEvent {
-    Thinking,
-    Editing(String),
-    Executing(String),
-    Done,
-}
-
-fn handle_mcp_events(
-    mut ev_rx: EventReader<MCPEvent>,
-    mut query: Query<&mut Transform, With<AICore>>,
-    mut particles: Query<&mut ParticleEmitRate>,
-) {
-    for ev in ev_rx.read() {
-        match ev {
-            MCPEvent::Thinking => { /* 匀速旋转 */ }
-            MCPEvent::Editing(_) => { /* 脉动发光，粒子增强 */ }
-            MCPEvent::Executing(_) => { /* 轻微抖动 */ }
-            MCPEvent::Done => { /* 爆炸特效 */ }
-        }
-    }
-}
-```
-
-MCP Server 接收到的指令通过 Bevy 的 EventWriter 发送，System 在每帧自动处理，ECS 架构天然解耦，扩展性强。
+**Vite 构建产物**：
+- `dist/index.html` — 入口
+- `dist/assets/*.{js,css}` — 编译后的代码
+- `dist/assets/*.vrm` — VRM 文件（Vite 默认会把 `assets/` 下的文件原样拷贝到 `dist/assets/`）
 
 ## 📂 五、目录结构
 
 ```
 /
-├── src/
-│   ├── main.rs              # 入口，初始化 Bevy App + MCP Server
-│   ├── cli.rs                # CLI 命令解析（含 --no-game 等参数）
-│   ├── log_reader.rs         # Claude Code / Codex / OpenCode 日志读取
-│   ├── ai_client.rs          # AI API 客户端（OpenAI 兼容格式）
-│   ├── config.rs             # 配置管理 (~/.vibreak/config.json)
-│   ├── jokes.rs              # 内置段子库
-│   ├── mcp_server.rs         # Rust MCP Server（stdio + 事件转发）
-│   ├── events.rs             # MCPEvent 定义
-│   ├── systems/
-│   │   ├── animation.rs      # 模型动画 System
-│   │   ├── particles.rs      # 粒子系统
-│   │   └── ui.rs             # UI 文字滚动 System
-│   └── plugins/
-│       └── mcp_plugin.rs     # Bevy Plugin，注册 Event + System
-├── assets/
-│   ├── models/
-│   ├── textures/
-│   ├── materials/
-│   └── fonts/
-├── builds/                   # 各平台编译产物
-└── Cargo.toml
+├── index.html                  # Vite 入口
+├── package.json                # 依赖与脚本
+├── tsconfig.json               # TS 严格模式
+├── vite.config.ts              # Vite 配置（base="./"）
+├── .gitignore
+├── README.md
+├── docs/
+│   └── plan.md
+├── assets/                     # VRM 模型
+│   ├── 芙宁娜.vrm
+│   └── Klee.vrm
+└── src/
+    ├── main.ts                 # 场景、相机、灯光、动画循环
+    ├── vrm.ts                  # VRM 加载 / 释放工具
+    └── styles.css              # 暗色背景 + 顶部 UI
 ```
 
-整个项目一个 Cargo 包，无外部依赖进程。
+## 🔌 六、运行方式
 
-## 🔌 六、MCP 数据链路
+```bash
+# 1. 安装依赖（首次）
+npm install
 
-MCP Server 内嵌在宿主进程中，通过 stdio 与 Claude Code 通信，采用双路数据采集：
+# 2. 开发模式（HMR）
+npm run dev
+# 浏览器打开 http://localhost:5173
 
-**主动路径** — Claude Code 通过系统提示调用 `send_thought_to_vibreak` 工具，将实时状态经 stdio 推送给内嵌 MCP Server，MCP Server 通过 EventWriter 写入 Bevy 事件队列。
+# 3. 生产构建
+npm run build
+# 产物在 dist/
 
-**被动路径** — 文件监听线程轮询 `~/.claude/history.jsonl`，任何落盘记录都会被解析并写入 Bevy 事件队列。
+# 4. 预览生产构建
+npm run preview
+```
 
-双路数据最终汇聚到 Bevy EventReader，由 `handle_mcp_events` System 驱动 3D 画面保持同步。
+## 🎨 七、关键实现
 
-## 🎮 七、3D 场景反馈机制
+**`src/vrm.ts`** — VRM 加载：
+- 用 `GLTFLoader` 加载 glTF
+- 注册 `VRMLoaderPlugin` 自动检测 VRM 0.0 / 1.0
+- 用 `VRMUtils.rotateVRM0(vrm)` 校正朝向
+- 用 `VRMUtils.deepDispose` 释放 GPU 资源
 
-| 状态 | 动画反馈 | UI 显示 |
-|------|---------|---------|
-| 思考中 | AI 核心模型匀速旋转，粒子系统平稳环绕 | "AI 思考中..." |
-| 修改文件 | 核心模型脉动发光，粒子强度提升 | 正在修改的文件名 |
-| 执行命令 | 核心模型产生轻微抖动 | — |
-| 完成 | 爆炸或缩放特效，粒子系统爆发 | "完成！" |
+**`src/main.ts`** — 场景搭建：
+- WebGLRenderer + sRGB output + ACES tone mapping
+- 主光 (DirectionalLight, 1.0) + 补光 (0.4) + 环境光 (0.5)
+- OrbitControls，目标点 (0, 1.2, 0)
+- 切换模型时 `disposeVRM(old)` 再 `scene.add(new)`
 
-## 📁 八、数据来源
+## 🛡 八、注意事项
 
-- **Claude Code** — `~/.claude/history.jsonl`（全局），`.claude/projects/`（项目会话）
-- **Codex** — `.codex/sessions/`（JSON）
-- **OpenCode** — `.local/share/opencode/log/`
+- **VRM 0.x 转换 VRM 1.0** — 社区主要工具：UniVRM 0.108+ 自带的转换器，或在线转换工具。本项目支持两种版本，无需转换。
+- **版权** — 第三方 VRM 模型注意授权协议（一般商用需作者许可）。
+- **浏览器要求** — 需要支持 WebGL2（Chrome 56+ / Firefox 51+ / Edge 79+ / Safari 15+）。
 
-Rust 通过 `dirs::home_dir()` 统一获取用户主目录路径，自动适配各平台。
+## 🔮 九、后续扩展（未实现）
 
-## 🎨 九、3D 模型管理
-
-Bevy 原生支持 **glTF（.glb/.gltf）**，首选此格式。MMD 模型（PMX）需在 Blender 中用 Cats 插件转换为 glTF 后使用。
-
-推荐来源：Sketchfab、Poly Haven、模之屋。商用需核查授权协议。
-
-## 🚀 十、开发计划
-
-| 阶段 | 内容 |
+| 方向 | 说明 |
 |------|------|
-| 一 | Rust CLI 骨架：配置管理 + AI API 基础调用 |
-| 二 | Bevy 3D 场景：模型加载 + 基础动画 |
-| 三 | Rust MCP Server：实现 MCP 协议 + Bevy Plugin 集成 |
-| 四 | 完整数据链路打通：MCP → Event → System → 3D 动画 |
-| 五 | 视觉打磨 + 跨平台打包 + 文档 |
+| 实时状态可视化 | 通过 WebSocket / SSE 接收 Claude Code 状态事件，驱动模型动画 |
+| 表情/动作控制 | 切换 VRM 表情，播放 VRMA 动画 |
+| MCP 集成 | 若需 stdio MCP，需 Node sidecar 或 Rust 进程间通信 |
 
-预计 **两周** 左右。
-
-## 📦 十一、跨平台交付
-
-单文件分发：
-
-- **macOS** — 编译为通用二进制 `.app` 包
-- **Windows** — 编译为 `.exe` 文件，资源全部打包进单一文件
-
-用户无需安装任何运行时，下载即用。
-
-## ⚙️ 十二、用户配置
-
-`~/.vibreak/config.json`：
-
-- AI 服务的 API Key 和 Base URL
-- 默认模型名称
-- 是否启用 3D 窗口
-- 摸鱼新闻模式（内置段子 / 真实热搜 / AI 生成）
-- 自定义段子列表
-
-## 🛡️ 十三、注意事项
-
-- **启动顺序** — 先启动 Vibe Break（同时启用 MCP Server 和 3D 窗口），然后在 Claude Code 中加载 MCP 配置
-- **文件权限** — 需读取 `~/.claude/` 目录的权限
-- **降级方案** — `--no-game` 参数关闭 3D 窗口，退化为纯终端模式
-- **版权合规** — 第三方 3D 模型注意授权协议
-
-## 🎯 十四、使用流程
-
-1. 在 Claude Code 项目目录配置 MCP 指向 Vibe Break 可执行文件
-2. 运行 `vibe-break` 启动 3D 窗口并等待 Claude Code 连接
-3. 在另一终端正常使用 Claude Code，3D 窗口自动跟随 AI 状态切换动画
-
----
-
-本方案以**全线 Rust** 统一技术栈，通过 Bevy ECS + Rust MCP 库将 3D 引擎与 MCP Server 嵌入同一进程。最终交付物为**单个可执行文件**，用户下载即用，无需管理多进程，零 IPC 开销，响应更及时。
+> 这些扩展需要后端服务支撑，超出"Web 端 VRM 查看器"的范围。
