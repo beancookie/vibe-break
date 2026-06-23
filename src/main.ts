@@ -1,4 +1,9 @@
-import { createApp } from "vue";
-import VrmViewer from "./components/VrmViewer.vue";
+import { mount } from "svelte";
+import VrmViewer from "./components/VrmViewer.svelte";
 
-createApp(VrmViewer).mount("#app");
+const target = document.getElementById("app");
+if (!target) throw new Error("Missing #app root element");
+
+const app = mount(VrmViewer, { target });
+
+export default app;
