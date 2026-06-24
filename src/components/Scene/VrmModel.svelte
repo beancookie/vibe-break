@@ -216,10 +216,26 @@
           disposeVRM(oldVrm);
         }
         current = vrm;
+        // Hide the new model until the first frame of the active
+        // animation has been applied. VRM models load in their bind
+        // pose (T-pose / A-pose); without this gate the user would
+        // see the bind pose flash for the few hundred ms it takes to
+        // fetch + parse the VRMA clip. The anim effect flips
+        // `vrm.scene.visible` back to true after the first play().
+        vrm.scene.visible = false;
         scene.add(vrm.scene);
         currentRev++; // notify the anim effect
 
         if (vrm.lookAt) vrm.lookAt.target = lookTarget;
+
+        // If the user (or the startup path in main.ts) hasn't picked
+        // an animation yet, default to the first available one so the
+        // model comes alive instead of freezing in the bind pose.
+        // Mutating selectedAnim also re-fires the anim effect, which
+        // is the path that flips vrm.scene.visible back to true.
+        if (!appState.selectedAnim && appState.animList.length > 0) {
+          appState.selectedAnim = appState.animList[0].url;
+        }
 
         // updateMatrixWorld walks the whole scene graph; for a 40 MB
         // VRM with thousands of Object3Ds that's 50–150 ms of blocking
@@ -343,6 +359,10 @@
         } else {
           newAction.play();
         }
+        // Reveal the model now that the first action is playing.
+        // Until this point the scene was hidden in startLoad() to
+        // avoid flashing the bind pose.
+        vrm.scene.visible = true;
         appState.status = `▶ ${name}`;
       })
       .catch((e: unknown) => {
