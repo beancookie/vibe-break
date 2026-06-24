@@ -1,146 +1,209 @@
-# 🎮 Vibe Break — 开发规划
+# 🎮 Vibe Break — 最终技术方案
 
-## 📌 一、项目定位
+一份面向程序员的趣味工具箱方案，将 AI 编程助手的思考过程实时可视化为 3D 互动场景。
 
-Vibe Break 是一个**桌面端的 VRM 角色查看器 + 动画播放器**。把等代码、编译、部署的碎片时间，交给一个可爱的桌面宠物陪你度过。
+## 📌 一、项目概述
 
-**当前阶段**：可用的桌面应用，支持加载多个 VRM 模型、播放 VRMA 动画、自动取景、自适应窗口。
+Vibe Break 是一款为习惯终端工作的程序员设计的趣味工具箱，核心价值在于将等待 AI 生成代码、编译、部署等碎片时间转化为带有视觉娱乐反馈的轻松时刻。
 
----
+项目以**统一的 Rust 可执行文件**形态交付，将 Bevy 3D 引擎与 MCP 服务器嵌入同一进程，与 Claude Code 通过 MCP 协议深度集成，实时捕获 AI 的工作状态并驱动 3D 画面做出对应反馈。
 
-## 🏗 二、当前架构
+## 🎯 二、核心功能
 
-### 技术栈
+| 功能 | 说明 |
+|------|------|
+| 实时状态可视化 | Claude Code 思考、改文件、执行命令时，3D 场景自动切换对应动画 |
+| 摸鱼新闻弹幕 | 滚动显示程序员梗段子，可选内置段子 / 真实热搜 / AI 生成 |
+| 日志统计日报 | 读取本地历史记录，统计 AI 交互次数、文件修改量、中断频率 |
+| AI 毒舌点评 | 基于统计数据调用大模型，生成幽默风格的开发者日报 |
 
-| 层 | 选型 | 说明 |
-|----|------|------|
-| 桌面壳 | Tauri 2 | Rust 后端 + WebView 前端 |
-| 前端框架 | Svelte 5（runes） | 状态/响应式 |
-| 场景封装 | Threlte | Svelte 适配的 three.js 声明式 API |
-| 3D 引擎 | three.js | 渲染 |
-| VRM | @pixiv/three-vrm | VRM 0.x / 1.x，MToon 着色 |
-| 动画 | @pixiv/three-vrm-animation | VRMA 解析 |
-| 样式 | Tailwind CSS v4 | UI 样式 |
+## 🧩 三、技术选型
 
-### 资源加载管线
+- **宿主程序** — Rust，兼顾高性能、跨平台和内存安全
+- **3D 引擎** — Bevy，Rust 生态最活跃的 ECS 架构引擎，原生 glTF 支持，社区驱动
+- **MCP 服务器** — Rust MCP 库（`rust-mcp-sdk` / `turbomcp` / `mcpx`），嵌入宿主进程，无额外运行时
+- **通信协议** — MCP 协议（stdio），宿主进程内直接通信，零 IPC 开销
+- **AI 接口** — 兼容 OpenAI 格式，支持 DeepSeek、通义千问等，用户自带 API Key
+- **3D 模型格式** — glTF（.glb/.gltf）首选，Bevy 原生支持
+- **跨平台策略** — 原生编译，单文件分发，无需任何运行时环境
+
+## 🔄 四、系统架构
+
+架构简化为两个组件：
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  启动                                                        │
-│                                                              │
-│  1. main.ts: 调 invoke("list_assets")  →  拿到 vrm/vrma 列表  │
-│                                                              │
-│  2. 用户选模型 → debounce 200ms → startLoad(idx)              │
-│       ├─ fetch buffer（asset:// 协议，Tauri IO 线程）         │
-│       ├─ yield → parse（GLTFLoader + VRMLoaderPlugin）        │
-│       ├─ yield → frameVRM（自动取景）+ resizeWindowToVRM     │
-│       └─ 切场景：scene.remove(old) + scene.add(new)           │
-│                                                              │
-│  3. 用户选动画 → $effect 重新跑 → mixer.clipAction（loop）    │
-│                                                              │
-│  4. 每帧：useTask → vrm.update(dt) + mixer.update(dt)        │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────┐
+│         Vibe Break (Rust)        │
+│  ┌───────────┐  ┌─────────────┐  │
+│  │  Bevy 3D  │  │ MCP Server  │  │
+│  │   引擎     │◄─┤  (内嵌)     │  │
+│  │   + UI    │  │   stdio      │  │
+│  └───────────┘  └──────┬──────┘  │
+│                         │         │
+│  ┌──────────────────────┘         │
+│  │  CLI 层 (日志/配置/AI API)     │
+│  └─────────────────────────────────┘
+│          │ MCP (stdio)
+│          ▼
+│  ┌──────────────┐
+│  │  Claude Code  │
+│  │  (MCP 客户端)  │
+│  └──────────────┘
 ```
 
-### 关键文件
+**Vibe Break (Rust)** — 统一应用，内部包含三个逻辑层：
+- **CLI 层** — 读取本地日志、调用 AI API、管理配置、处理命令行参数
+- **MCP Server** — 通过 `rust-mcp-sdk` / `turbomcp` 实现，作为独立线程运行，通过 stdio 与 Claude Code 通信
+- **Bevy 3D 引擎** — 通过 System + Event 模式接收 MCP 层转发的状态事件，驱动 3D 场景动画
 
-| 文件 | 职责 |
+**Claude Code** — MCP 客户端，通过 stdio 与宿主进程内的 MCP Server 直连。
+
+### 🦀 Rust MCP 实现路径
+
+Rust 生态中有多个生产级的 MCP 实现：
+
+| 库 | 特点 |
+|----|------|
+| `rust-mcp-sdk` | 功能全面，提供构建 MCP 服务器的完整 API |
+| `turbomcp` | 高性能，异步优先 |
+| `mcpx` | 极简，轻量 |
+
+选择任一库在 Rust 中实现 MCP Server，然后通过 **Bevy Event + System** 驱动游戏循环：
+
+```rust
+#[derive(Event)]
+enum MCPEvent {
+    Thinking,
+    Editing(String),
+    Executing(String),
+    Done,
+}
+
+fn handle_mcp_events(
+    mut ev_rx: EventReader<MCPEvent>,
+    mut query: Query<&mut Transform, With<AICore>>,
+    mut particles: Query<&mut ParticleEmitRate>,
+) {
+    for ev in ev_rx.read() {
+        match ev {
+            MCPEvent::Thinking => { /* 匀速旋转 */ }
+            MCPEvent::Editing(_) => { /* 脉动发光，粒子增强 */ }
+            MCPEvent::Executing(_) => { /* 轻微抖动 */ }
+            MCPEvent::Done => { /* 爆炸特效 */ }
+        }
+    }
+}
+```
+
+MCP Server 接收到的指令通过 Bevy 的 EventWriter 发送，System 在每帧自动处理，ECS 架构天然解耦，扩展性强。
+
+## 📂 五、目录结构
+
+```
+/
+├── src/
+│   ├── main.rs              # 入口，初始化 Bevy App + MCP Server
+│   ├── cli.rs                # CLI 命令解析（含 --no-game 等参数）
+│   ├── log_reader.rs         # Claude Code / Codex / OpenCode 日志读取
+│   ├── ai_client.rs          # AI API 客户端（OpenAI 兼容格式）
+│   ├── config.rs             # 配置管理 (~/.vibreak/config.json)
+│   ├── jokes.rs              # 内置段子库
+│   ├── mcp_server.rs         # Rust MCP Server（stdio + 事件转发）
+│   ├── events.rs             # MCPEvent 定义
+│   ├── systems/
+│   │   ├── animation.rs      # 模型动画 System
+│   │   ├── particles.rs      # 粒子系统
+│   │   └── ui.rs             # UI 文字滚动 System
+│   └── plugins/
+│       └── mcp_plugin.rs     # Bevy Plugin，注册 Event + System
+├── assets/
+│   ├── models/
+│   ├── textures/
+│   ├── materials/
+│   └── fonts/
+├── builds/                   # 各平台编译产物
+└── Cargo.toml
+```
+
+整个项目一个 Cargo 包，无外部依赖进程。
+
+## 🔌 六、MCP 数据链路
+
+MCP Server 内嵌在宿主进程中，通过 stdio 与 Claude Code 通信，采用双路数据采集：
+
+**主动路径** — Claude Code 通过系统提示调用 `send_thought_to_vibreak` 工具，将实时状态经 stdio 推送给内嵌 MCP Server，MCP Server 通过 EventWriter 写入 Bevy 事件队列。
+
+**被动路径** — 文件监听线程轮询 `~/.claude/history.jsonl`，任何落盘记录都会被解析并写入 Bevy 事件队列。
+
+双路数据最终汇聚到 Bevy EventReader，由 `handle_mcp_events` System 驱动 3D 画面保持同步。
+
+## 🎮 七、3D 场景反馈机制
+
+| 状态 | 动画反馈 | UI 显示 |
+|------|---------|---------|
+| 思考中 | AI 核心模型匀速旋转，粒子系统平稳环绕 | "AI 思考中..." |
+| 修改文件 | 核心模型脉动发光，粒子强度提升 | 正在修改的文件名 |
+| 执行命令 | 核心模型产生轻微抖动 | — |
+| 完成 | 爆炸或缩放特效，粒子系统爆发 | "完成！" |
+
+## 📁 八、数据来源
+
+- **Claude Code** — `~/.claude/history.jsonl`（全局），`.claude/projects/`（项目会话）
+- **Codex** — `.codex/sessions/`（JSON）
+- **OpenCode** — `.local/share/opencode/log/`
+
+Rust 通过 `dirs::home_dir()` 统一获取用户主目录路径，自动适配各平台。
+
+## 🎨 九、3D 模型管理
+
+Bevy 原生支持 **glTF（.glb/.gltf）**，首选此格式。MMD 模型（PMX）需在 Blender 中用 Cats 插件转换为 glTF 后使用。
+
+推荐来源：Sketchfab、Poly Haven、模之屋。商用需核查授权协议。
+
+## 🚀 十、开发计划
+
+| 阶段 | 内容 |
 |------|------|
-| `src-tauri/src/lib.rs` | `list_assets` 命令、窗口比例约束、IO 线程扫描 |
-| `src-tauri/tauri.conf.json` | assetProtocol scope、bundle.resources 列表 |
-| `src/lib/three/assetUrl.ts` | `asset://` URL 构造 |
-| `src/lib/three/useVrm.ts` | `loadVRM` / `loadVRMAClip` / `disposeVRM` |
-| `src/lib/three/loadAssets.ts` | 调 `invoke("list_assets")` |
-| `src/lib/stores.svelte.ts` | `appState` 全局状态 |
-| `src/components/Scene/VrmModel.svelte` | 模型加载 + 动画播放 + 自动取景 + 窗口尺寸 |
-| `src/components/UI/VrmContextMenu.svelte` | 上下文菜单 UI |
+| 一 | Rust CLI 骨架：配置管理 + AI API 基础调用 |
+| 二 | Bevy 3D 场景：模型加载 + 基础动画 |
+| 三 | Rust MCP Server：实现 MCP 协议 + Bevy Plugin 集成 |
+| 四 | 完整数据链路打通：MCP → Event → System → 3D 动画 |
+| 五 | 视觉打磨 + 跨平台打包 + 文档 |
 
-### 性能设计要点
+预计 **两周** 左右。
 
-- **fetch 与 parse 分阶段 + yield**：WebView 不会冻屏
-- **disposeVRM 延后到 setTimeout(0)**：避免同步 `deepDispose` 阻塞 100~500ms
-- **loadToken / animToken**：并发的加载/动画请求自动过期，只保留最新
-- **SWITCH_DEBOUNCE_MS=200**：模型切换防抖
-- **clipCache**：同一 URL 的 VRMA clip 只解析一次
-- **LoopPingPong**：VRMA 循环改用 ping-pong，消除第 0 帧绑定姿势带来的跳帧
+## 📦 十一、跨平台交付
 
----
+单文件分发：
 
-## 🧠 三、关键技术决策与原因
+- **macOS** — 编译为通用二进制 `.app` 包
+- **Windows** — 编译为 `.exe` 文件，资源全部打包进单一文件
 
-### 1. 为什么走 Tauri 2 而不是 Electron / 纯 Web
+用户无需安装任何运行时，下载即用。
 
-- **包体积**：Tauri 2 安装包约 5~10 MB，Electron 经常 100+ MB
-- **资源访问**：Rust 端直接扫描本地 `resources/assets/`，无需手动打包
-- **跨平台**：同一份代码 Windows / macOS / Linux
-- **WebView 共享 Chromium 内核**：three.js / WebGL2 兼容性有保障
+## ⚙️ 十二、用户配置
 
-### 2. 为什么用 Threlte 而不是裸 three.js
+`~/.vibreak/config.json`：
 
-- **声明式**：Svelte 组件树和 scene graph 一一对应
-- **生命周期托管**：`useTask` 自动清理，不用手写 requestAnimationFrame
-- **响应式相机/控制器**：`useThrelte()` 直接拿到 scene / camera
+- AI 服务的 API Key 和 Base URL
+- 默认模型名称
+- 是否启用 3D 窗口
+- 摸鱼新闻模式（内置段子 / 真实热搜 / AI 生成）
+- 自定义段子列表
 
-### 3. 为什么 VRMA 循环用 ping-pong
+## 🛡 十三、注意事项
 
-- VRMA 文件的第 0 帧是**绑定姿势**（A-pose / T-pose），不是动作起点
-- 用 `LoopRepeat` 时，每轮循环会从末帧**硬切**到第 0 帧 → 视觉跳帧
-- 改用 `LoopPingPong` 后，末帧和第 0 帧之间是**反向回放过渡**，循环点肉眼无感
-- 副作用：动作速度感略降（可后续用 `setEffectiveTimeScale` 调速）
+- **启动顺序** — 先启动 Vibe Break（同时启用 MCP Server 和 3D 窗口），然后在 Claude Code 中加载 MCP 配置
+- **文件权限** — 需读取 `~/.claude/` 目录的权限
+- **降级方案** — `--no-game` 参数关闭 3D 窗口，退化为纯终端模式
+- **版权合规** — 第三方 3D 模型注意授权协议
 
-### 4. 为什么不用 `resolveResource`
+## 🎯 十四、使用流程
 
-Tauri 2 的 `resolveResource("assets/...")` 返回 `<exe-dir>/assets/...`，但 bundle 后资源实际在 `<exe-dir>/resources/assets/...`，**多了一层 `resources/`**。所以 `assetUrl.ts` 直接拼 `join(resourceDir(), "resources", url)`。
-
-### 5. 为什么窗口锁定 3:4
-
-- VRM 模型是直立角色，横向空间需求小、纵向空间需求大
-- 锁 3:4 (W:H) 比例既符合桌面宠物的"立牌"形态，又和模型取景算法一致（Rust 端 `WINDOW_ASPECT_W_OVER_H` 和 JS 端 `resizeWindowToVRM` 都按此比例算）
+1. 在 Claude Code 项目目录配置 MCP 指向 Vibe Break 可执行文件
+2. 运行 `vibe-break` 启动 3D 窗口并等待 Claude Code 连接
+3. 在另一终端正常使用 Claude Code，3D 窗口自动跟随 AI 状态切换动画
 
 ---
 
-## 🔧 四、已解决的问题 / 踩过的坑
-
-| 问题 | 解决 |
-|------|------|
-| 切换模型时旧模型 GPU 资源不释放 → 内存泄漏 | `disposeVRM` 延后 + `VRMUtils.deepDispose` |
-| 40 MB 模型同步 parse 冻屏 1~3s | fetch / parse / frameVRM 三段 + yield |
-| 用户连点模型下拉 → 多个 load 并行 | SWITCH_DEBOUNCE + loadToken 过期 |
-| `resolveResource` 路径少一层 `resources/` | `assetUrl.ts` 手拼路径 |
-| 模型取景对宽高比例敏感 | 用 `headY` / `feetY` 算人型高度，统一从人型顶部取景 |
-| VRMA 循环跳帧 | 改 `LoopPingPong` |
-| `Mio.vrm` 330 MB 撞 GitHub 100 MB 限制 | 删除文件 + 重新整理仓库结构 |
-
----
-
-## 🚧 五、已知限制
-
-- **动画速度**：`LoopPingPong` 让动作看起来稍慢（目前未调 `setEffectiveTimeScale`）
-- **资源路径**：`assetUrl.ts` 的浏览器 fallback 走 `public/`，但 `main.ts` 在非 Tauri 模式下不扫盘，纯浏览器跑也看不到模型
-- **多模型 blend**：当前不支持 VRMA + 表情混合（blendShape 权重还没接到 UI）
-- **无边框窗口**：`decorations: false` 关掉了标题栏，目前没有自定义拖动区
-
----
-
-## 🔮 六、未来扩展（未实现）
-
-| 方向 | 说明 | 优先级 |
-|------|------|--------|
-| 表情控制 UI | 把 VRM 的 `expressionManager` 表情列出来，让用户手动调 | 中 |
-| 多动画混合 | `mixer.clipAction(A).weight=0.5 + B.weight=0.5` 平滑过渡 | 中 |
-| 动画速度调节 | UI slider → `action.setEffectiveTimeScale(v)` | 低 |
-| MCP 集成 | 通过 Tauri 的 sidecar / stdio MCP 接收 Claude Code 状态，自动播对应动画 | 高（项目初心） |
-| 自定义拖动区 | 加一个顶栏，允许无边框窗口拖动 | 中 |
-| 资源热重载 | 监听 `resources/assets/` 变化，自动重新扫描 | 低 |
-| 主题/换装 | 加载多套贴图 / 切换服装 | 低 |
-
----
-
-## 📜 七、版本演进
-
-- **v0.1 — first commit**: 纯 Web + three.js + Vue 3 的 VRM 查看器
-- **v0.2**: 迁移到 Tauri 2 + Vue 3 + three.js，实现本地资源加载
-- **v0.3**: 迁移到 Svelte 5 + runes
-- **v0.4**: 配置 Tauri 资源协议，资源从 `public/` 移到 `src-tauri/resources/`
-- **v0.5**: 重构 VRM 加载管线（fetch/parse 分阶段 + yield），加窗口比例约束
-- **v0.6 (当前)**: VRMA 循环改 `LoopPingPong` 消除跳帧；整理仓库结构（删 `public/assets/`、去掉误加的 .gitignore 规则、补齐资源 commit）
+本方案以**全线 Rust** 统一技术栈，通过 Bevy ECS + Rust MCP 库将 3D 引擎与 MCP Server 嵌入同一进程。最终交付物为**单个可执行文件**，用户下载即用，无需管理多进程，零 IPC 开销，响应更及时。
