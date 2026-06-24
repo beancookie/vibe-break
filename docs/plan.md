@@ -69,25 +69,21 @@ Vibe Break 是一个**桌面端的 VRM 角色查看器**。
 
 ### 📍 当前架构
 
-```
-┌──────────────────────────────────────────────────────┐
-│                Tauri 2 (单进程)                       │
-│                                                      │
-│  ┌──────────┐    ┌──────────────────────────────┐    │
-│  │  WebView  │    │       Rust 后端              │    │
-│  │  Svelte 5 │    │   - list_assets 命令         │    │
-│  │  Threlte  │◄──►│   - 窗口事件 Resized 约束     │    │
-│  │  three.js │ IPC│   - 启动时注册资源目录        │    │
-│  │  + 沙盒    │    │                              │    │
-│  └──────────┘    └──────────────────────────────┘    │
-│         │                                            │
-│         │ asset:// 协议                              │
-│         ▼                                            │
-│  ┌──────────────────┐                                │
-│  │ $RESOURCE/assets │                                │
-│  │   *.vrm / *.vrma │                                │
-│  └──────────────────┘                                │
-└──────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Tauri2["Tauri 2 单进程"]
+        direction LR
+        subgraph WebView["WebView"]
+            WV["Svelte 5<br/>Threlte<br/>three.js"]
+        end
+        subgraph Rust["Rust 后端"]
+            R1["list_assets 命令"]
+            R2["窗口事件 Resized 约束"]
+            R3["启动时注册资源目录"]
+        end
+        WV <-->|invoke / event| Rust
+    end
+    WV -->|asset:// 协议| Assets[("$RESOURCE/assets<br/>*.vrm / *.vrma")]
 ```
 
 **前端**（Svelte 5 + Threlte）：
@@ -102,24 +98,17 @@ Vibe Break 是一个**桌面端的 VRM 角色查看器**。
 
 ### 🎯 目标架构
 
-```
-┌─────────────────────────────────┐
-│         Vibe Break (Rust)        │
-│  ┌───────────┐  ┌─────────────┐  │
-│  │  Bevy 3D  │  │ MCP Server  │  │
-│  │   引擎     │◄─┤  (内嵌)     │  │
-│  │   + UI    │  │   stdio      │  │
-│  └───────────┘  └──────┬──────┘  │
-│                         │         │
-│  ┌──────────────────────┘         │
-│  │  CLI 层 (日志/配置/AI API)     │
-│  └─────────────────────────────────┘
-│          │ MCP (stdio)
-│          ▼
-│  ┌──────────────┐
-│  │  Claude Code  │
-│  │  (MCP 客户端)  │
-│  └──────────────┘
+```mermaid
+flowchart TB
+    subgraph VB["Vibe Break (Rust 单进程)"]
+        direction TB
+        Bevy["Bevy 3D 引擎 + UI"]
+        MCP["MCP Server 内嵌<br/>stdio"]
+        CLI["CLI 层<br/>(日志 / 配置 / AI API)"]
+        Bevy <-->|事件 / 状态| MCP
+        Bevy -.->|读日志 / 调 API| CLI
+    end
+    VB -->|MCP stdio| CC["Claude Code<br/>(MCP 客户端)"]
 ```
 
 ## 📂 五、目录结构
@@ -179,22 +168,28 @@ vibe-break/
 
 ## 🔌 六、当前资源加载管线
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  启动                                                        │
-│                                                              │
-│  1. main.ts → invoke("list_assets") → 拿 vrm/vrma 列表       │
-│                                                              │
-│  2. 用户选模型 → debounce 200ms → startLoad(idx)             │
-│       ├─ fetch buffer（asset:// 协议，Tauri IO 线程）        │
-│       ├─ yield → parse（GLTFLoader + VRMLoaderPlugin）       │
-│       ├─ yield → frameVRM（自动取景）+ resizeWindowToVRM     │
-│       └─ scene.remove(old) + scene.add(new)                  │
-│                                                              │
-│  3. 用户选动画 → $effect → mixer.clipAction(LoopPingPong)    │
-│                                                              │
-│  4. 每帧：useTask → vrm.update(dt) + mixer.update(dt)        │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Start([启动]) --> S1[main.ts: invoke list_assets]
+    S1 --> S2[拿到 vrm / vrma 列表]
+
+    S2 --> U1{用户选模型}
+    U1 -->|debounce 200ms| L1[startLoad idx]
+    L1 --> L2["fetch buffer<br/>(asset:// 协议, Tauri IO 线程)"]
+    L2 --> Y1{{yield 让出主线程}}
+    Y1 --> L3["parse<br/>(GLTFLoader + VRMLoaderPlugin)"]
+    L3 --> Y2{{yield}}
+    Y2 --> L4["frameVRM 自动取景<br/>+ resizeWindowToVRM"]
+    L4 --> L5["scene.remove old<br/>+ scene.add new"]
+    L5 --> U1
+
+    S2 --> A1{用户选动画}
+    A1 -->|effect 触发| AM["mixer.clipAction<br/>(LoopPingPong)"]
+    AM --> A1
+
+    Start --> F[每帧 useTask]
+    F --> F1["vrm.update dt"]
+    F --> F2["mixer.update dt"]
 ```
 
 ## 🎮 七、3D 场景反馈机制
