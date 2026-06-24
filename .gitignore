@@ -26,10 +26,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-# VRM / VRMA model assets. These are user-supplied content (often
-# tens of MB each) and are shipped with the Tauri bundle from
-# src-tauri/resources/, so we keep them out of the git history to
-# avoid bloating the repo and hitting GitHub's 100 MB per-file limit.
-*.vrm
-*.vrma
