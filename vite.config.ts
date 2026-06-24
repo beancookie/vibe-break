@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { svelte, vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
 // @ts-expect-error process is a nodejs global
@@ -8,6 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [
+    tailwindcss(),
     svelte({
       preprocess: vitePreprocess(),
       prebundleSvelteLibraries: true,
@@ -17,6 +19,7 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       $lib: path.resolve(__dirname, "src/lib"),
+      "$lib/*": path.resolve(__dirname, "src/lib/*"),
     },
   },
 

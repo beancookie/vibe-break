@@ -30,7 +30,6 @@ fn collect(dir: &Path, ext: &str, prefix: &str, out: &mut Vec<AssetEntry>) {
         .map(|p| {
             let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
             let name = p.file_stem().and_then(|n| n.to_str()).unwrap_or(file_name);
-            eprintln!("[collect] file_name={:?} file_stem={:?}", file_name, name);
             AssetEntry {
                 name: name.to_string(),
                 url: format!("{prefix}{file_name}"),

@@ -1,4 +1,5 @@
 import { mount } from "svelte";
+import "./app.css";
 import VrmViewer from "./components/VrmViewer.svelte";
 import { listAssets } from "$lib/three/loadAssets";
 import { isTauri } from "$lib/three/tauri";

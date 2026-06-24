@@ -4,7 +4,7 @@
   import {
     AnimationMixer,
     Box3,
-    LoopRepeat,
+    LoopPingPong,
     Vector3,
     type AnimationClip,
     type PerspectiveCamera,
@@ -33,7 +33,6 @@
 
   // Reusable scratch vectors/box.
   const _v3a = new Vector3();
-  const _v3b = new Vector3();
   const _v3c = new Vector3();
   const _v3d = new Vector3();
   const _v3e = new Vector3();
@@ -62,8 +61,6 @@
 
     const headY =
       vrm.humanoid?.getNormalizedBoneNode("head")?.getWorldPosition(_v3a).y ?? null;
-    const hipsY =
-      vrm.humanoid?.getNormalizedBoneNode("hips")?.getWorldPosition(_v3b).y ?? null;
     const feetY =
       vrm.humanoid
         ?.getNormalizedBoneNode("leftFoot")
@@ -82,8 +79,6 @@
       bottom = _box.min.y;
     }
 
-    const centerY =
-      hipsY !== null && headY !== null ? (headY + hipsY) / 2 : (top + bottom) / 2;
     const height = Math.max(0.1, top - bottom);
 
     const fovRad = (cam.fov * Math.PI) / 180;
@@ -302,7 +297,13 @@
         stopMixer();
         const action = mixer.clipAction(clip, vrm.scene);
         action.reset();
-        action.setLoop(LoopRepeat, Infinity);
+        // Ping-pong looping (forward then reverse) avoids the visible
+        // snap-back to the VRMA's frame-0 bind pose that you'd see with
+        // plain LoopRepeat: most looping motions (idle, walk, …) are
+        // NOT seamless because frame 0 is the A-pose / T-pose, so a
+        // hard cut at loop time is jarring. PingPong starts and ends
+        // on the same pose, so the cycle boundary is invisible.
+        action.setLoop(LoopPingPong, Infinity);
         action.play();
         appState.status = `▶ ${name}`;
       })
