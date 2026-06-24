@@ -33,11 +33,7 @@
         "enable": true,
         "scope": {
           "requireLiteralLeadingDot": false,
-          "allow": [
-            "$RESOURCE/**",
-            "$RESOURCE/**/*",
-            "**/*"
-          ]
+          "allow": ["$RESOURCE/**", "$RESOURCE/**/*", "**/*"]
         }
       }
     }
@@ -52,9 +48,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "resources/assets/*.vrm",
-      "resources/assets/vrma/*.vrma"
-    ]
+    "resources": ["resources/assets/*.vrm", "resources/assets/vrma/*.vrma"]
   }
 }
