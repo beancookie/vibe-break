@@ -7,7 +7,7 @@
    * the OS window resizes together with the model.
    */
   import { useTask, useThrelte } from "@threlte/core";
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import * as THREE from "three";
   import { appState } from "$lib/stores.svelte";
@@ -71,11 +71,23 @@
         ? appState.petScale * PET_SCALE_STEP
         : appState.petScale / PET_SCALE_STEP;
     appState.petScale = Math.max(PET_SCALE_MIN, Math.min(PET_SCALE_MAX, next));
+    // Surface the change in the status bar so the user gets feedback
+    // that the wheel event was received.
+    appState.status = `🔍 ${Math.round(appState.petScale * 100)}%`;
   }
+
+  // Register the wheel handler manually with `passive: false` so that
+  // `preventDefault()` actually takes effect. `<svelte:window onwheel>`
+  // compiles to a *passive* listener (browsers / WebViews ignore
+  // preventDefault in passive listeners), which is why wheel-zoom
+  // silently failed before - the OS or the WebView ended up eating
+  // the event before our handler could act on it.
+  onMount(() => {
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  });
 
   onDestroy(() => {
     controls?.dispose();
   });
 </script>
-
-<svelte:window onwheel={onWheel} />
