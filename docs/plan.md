@@ -1,127 +1,146 @@
-# 🎮 Vibe Break — VRM Viewer (Web 架构)
+# 🎮 Vibe Break — 开发规划
 
-将 3D 角色作为 Web 应用展示，使用 `three.js` + `@pixiv/three-vrm` 在浏览器中加载和显示 VRM 模型。
+## 📌 一、项目定位
 
-> **注**：早期版本是 Rust + Bevy 的单文件原生桌面程序。考虑到 `bevy_vrm` 对 VRM 0.x 材质（MToon 透明 / Alpha Blend）渲染存在已知问题（眼睛被误剔除），整个前端栈迁移到 Web 端，使用 VRM 社区标准加载器 `@pixiv/three-vrm`，对 VRM 0.x / 1.x 都有成熟的 MToon 着色实现。
+Vibe Break 是一个**桌面端的 VRM 角色查看器 + 动画播放器**。把等代码、编译、部署的碎片时间，交给一个可爱的桌面宠物陪你度过。
 
-## 📌 一、项目概述
+**当前阶段**：可用的桌面应用，支持加载多个 VRM 模型、播放 VRMA 动画、自动取景、自适应窗口。
 
-Vibe Break 是一个**浏览器内运行的 VRM 角色查看器**，将等待 AI 生成代码、编译、部署等碎片时间的视觉娱乐反馈交给 Web 端处理。
+---
 
-- **轻量** — 双击 `index.html`（或运行 `npm run dev`）即可使用
-- **跨平台** — 任何现代浏览器（Chrome / Edge / Firefox / Safari）
-- **零运行时依赖** — 用户只需浏览器，无需安装额外软件
+## 🏗 二、当前架构
 
-## 🎯 二、核心功能（当前阶段）
+### 技术栈
 
-| 功能 | 说明 |
-|------|------|
-| VRM 加载 | 支持 VRM 0.0 和 1.0（自动检测） |
-| OrbitControls | 鼠标拖动旋转、滚轮缩放 |
-| MToon 着色 | 正确处理 VRM 0.x 的 MToon 材质（包括透明的眼睛、睫毛等）|
-| 切换模型 | 通过下拉菜单切换不同 VRM 文件 |
-
-> ⚠️ **未实现（未来扩展）**：实时状态可视化、摸鱼新闻弹幕、AI 毒舌点评。这些需要后端服务（MCP server、日志读取、AI API 调用）配合。
-
-## 🧩 三、技术选型
-
-| 层 | 选型 | 理由 |
+| 层 | 选型 | 说明 |
 |----|------|------|
-| 语言 | TypeScript | 类型安全，与 three.js 生态一致 |
-| 构建工具 | Vite 5 | 极快 HMR，零配置 TS，ESM 原生 |
-| 3D 引擎 | three.js (~0.169) | 业界标准 VRM 容器 |
-| VRM 加载器 | @pixiv/three-vrm 2.x | VRM 官方维护，支持 0.x 和 1.x，MToon 着色完整 |
-| 控制器 | three.js OrbitControls | 相机轨道控制，three.js 内置 |
+| 桌面壳 | Tauri 2 | Rust 后端 + WebView 前端 |
+| 前端框架 | Svelte 5（runes） | 状态/响应式 |
+| 场景封装 | Threlte | Svelte 适配的 three.js 声明式 API |
+| 3D 引擎 | three.js | 渲染 |
+| VRM | @pixiv/three-vrm | VRM 0.x / 1.x，MToon 着色 |
+| 动画 | @pixiv/three-vrm-animation | VRMA 解析 |
+| 样式 | Tailwind CSS v4 | UI 样式 |
 
-## 🔄 四、系统架构
-
-```
-┌─────────────────────────────────────┐
-│        Browser (Vite dev/build)     │
-│  ┌──────────────┐  ┌────────────┐   │
-│  │  three.js    │  │ three-vrm  │   │
-│  │  WebGL2      │◄─┤  loader    │   │
-│  │  renderer    │  │  (MToon)   │   │
-│  └──────────────┘  └────────────┘   │
-│         ▲                           │
-│         │ GLTFLoader + VRMLoaderPlugin│
-│         ▼                           │
-│  ┌──────────────────────────┐       │
-│  │  assets/*.vrm (静态资源)  │       │
-│  └──────────────────────────┘       │
-└─────────────────────────────────────┘
-```
-
-**Vite 构建产物**：
-- `dist/index.html` — 入口
-- `dist/assets/*.{js,css}` — 编译后的代码
-- `dist/assets/*.vrm` — VRM 文件（Vite 默认会把 `assets/` 下的文件原样拷贝到 `dist/assets/`）
-
-## 📂 五、目录结构
+### 资源加载管线
 
 ```
-/
-├── index.html                  # Vite 入口
-├── package.json                # 依赖与脚本
-├── tsconfig.json               # TS 严格模式
-├── vite.config.ts              # Vite 配置（base="./"）
-├── .gitignore
-├── README.md
-├── docs/
-│   └── plan.md
-├── assets/                     # VRM 模型
-│   ├── 芙宁娜.vrm
-│   └── Klee.vrm
-└── src/
-    ├── main.ts                 # 场景、相机、灯光、动画循环
-    ├── vrm.ts                  # VRM 加载 / 释放工具
-    └── styles.css              # 暗色背景 + 顶部 UI
+┌──────────────────────────────────────────────────────────────┐
+│  启动                                                        │
+│                                                              │
+│  1. main.ts: 调 invoke("list_assets")  →  拿到 vrm/vrma 列表  │
+│                                                              │
+│  2. 用户选模型 → debounce 200ms → startLoad(idx)              │
+│       ├─ fetch buffer（asset:// 协议，Tauri IO 线程）         │
+│       ├─ yield → parse（GLTFLoader + VRMLoaderPlugin）        │
+│       ├─ yield → frameVRM（自动取景）+ resizeWindowToVRM     │
+│       └─ 切场景：scene.remove(old) + scene.add(new)           │
+│                                                              │
+│  3. 用户选动画 → $effect 重新跑 → mixer.clipAction（loop）    │
+│                                                              │
+│  4. 每帧：useTask → vrm.update(dt) + mixer.update(dt)        │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 🔌 六、运行方式
+### 关键文件
 
-```bash
-# 1. 安装依赖（首次）
-npm install
-
-# 2. 开发模式（HMR）
-npm run dev
-# 浏览器打开 http://localhost:5173
-
-# 3. 生产构建
-npm run build
-# 产物在 dist/
-
-# 4. 预览生产构建
-npm run preview
-```
-
-## 🎨 七、关键实现
-
-**`src/vrm.ts`** — VRM 加载：
-- 用 `GLTFLoader` 加载 glTF
-- 注册 `VRMLoaderPlugin` 自动检测 VRM 0.0 / 1.0
-- 用 `VRMUtils.rotateVRM0(vrm)` 校正朝向
-- 用 `VRMUtils.deepDispose` 释放 GPU 资源
-
-**`src/main.ts`** — 场景搭建：
-- WebGLRenderer + sRGB output + ACES tone mapping
-- 主光 (DirectionalLight, 1.0) + 补光 (0.4) + 环境光 (0.5)
-- OrbitControls，目标点 (0, 1.2, 0)
-- 切换模型时 `disposeVRM(old)` 再 `scene.add(new)`
-
-## 🛡 八、注意事项
-
-- **VRM 0.x 转换 VRM 1.0** — 社区主要工具：UniVRM 0.108+ 自带的转换器，或在线转换工具。本项目支持两种版本，无需转换。
-- **版权** — 第三方 VRM 模型注意授权协议（一般商用需作者许可）。
-- **浏览器要求** — 需要支持 WebGL2（Chrome 56+ / Firefox 51+ / Edge 79+ / Safari 15+）。
-
-## 🔮 九、后续扩展（未实现）
-
-| 方向 | 说明 |
+| 文件 | 职责 |
 |------|------|
-| 实时状态可视化 | 通过 WebSocket / SSE 接收 Claude Code 状态事件，驱动模型动画 |
-| 表情/动作控制 | 切换 VRM 表情，播放 VRMA 动画 |
-| MCP 集成 | 若需 stdio MCP，需 Node sidecar 或 Rust 进程间通信 |
+| `src-tauri/src/lib.rs` | `list_assets` 命令、窗口比例约束、IO 线程扫描 |
+| `src-tauri/tauri.conf.json` | assetProtocol scope、bundle.resources 列表 |
+| `src/lib/three/assetUrl.ts` | `asset://` URL 构造 |
+| `src/lib/three/useVrm.ts` | `loadVRM` / `loadVRMAClip` / `disposeVRM` |
+| `src/lib/three/loadAssets.ts` | 调 `invoke("list_assets")` |
+| `src/lib/stores.svelte.ts` | `appState` 全局状态 |
+| `src/components/Scene/VrmModel.svelte` | 模型加载 + 动画播放 + 自动取景 + 窗口尺寸 |
+| `src/components/UI/VrmContextMenu.svelte` | 上下文菜单 UI |
 
-> 这些扩展需要后端服务支撑，超出"Web 端 VRM 查看器"的范围。
+### 性能设计要点
+
+- **fetch 与 parse 分阶段 + yield**：WebView 不会冻屏
+- **disposeVRM 延后到 setTimeout(0)**：避免同步 `deepDispose` 阻塞 100~500ms
+- **loadToken / animToken**：并发的加载/动画请求自动过期，只保留最新
+- **SWITCH_DEBOUNCE_MS=200**：模型切换防抖
+- **clipCache**：同一 URL 的 VRMA clip 只解析一次
+- **LoopPingPong**：VRMA 循环改用 ping-pong，消除第 0 帧绑定姿势带来的跳帧
+
+---
+
+## 🧠 三、关键技术决策与原因
+
+### 1. 为什么走 Tauri 2 而不是 Electron / 纯 Web
+
+- **包体积**：Tauri 2 安装包约 5~10 MB，Electron 经常 100+ MB
+- **资源访问**：Rust 端直接扫描本地 `resources/assets/`，无需手动打包
+- **跨平台**：同一份代码 Windows / macOS / Linux
+- **WebView 共享 Chromium 内核**：three.js / WebGL2 兼容性有保障
+
+### 2. 为什么用 Threlte 而不是裸 three.js
+
+- **声明式**：Svelte 组件树和 scene graph 一一对应
+- **生命周期托管**：`useTask` 自动清理，不用手写 requestAnimationFrame
+- **响应式相机/控制器**：`useThrelte()` 直接拿到 scene / camera
+
+### 3. 为什么 VRMA 循环用 ping-pong
+
+- VRMA 文件的第 0 帧是**绑定姿势**（A-pose / T-pose），不是动作起点
+- 用 `LoopRepeat` 时，每轮循环会从末帧**硬切**到第 0 帧 → 视觉跳帧
+- 改用 `LoopPingPong` 后，末帧和第 0 帧之间是**反向回放过渡**，循环点肉眼无感
+- 副作用：动作速度感略降（可后续用 `setEffectiveTimeScale` 调速）
+
+### 4. 为什么不用 `resolveResource`
+
+Tauri 2 的 `resolveResource("assets/...")` 返回 `<exe-dir>/assets/...`，但 bundle 后资源实际在 `<exe-dir>/resources/assets/...`，**多了一层 `resources/`**。所以 `assetUrl.ts` 直接拼 `join(resourceDir(), "resources", url)`。
+
+### 5. 为什么窗口锁定 3:4
+
+- VRM 模型是直立角色，横向空间需求小、纵向空间需求大
+- 锁 3:4 (W:H) 比例既符合桌面宠物的"立牌"形态，又和模型取景算法一致（Rust 端 `WINDOW_ASPECT_W_OVER_H` 和 JS 端 `resizeWindowToVRM` 都按此比例算）
+
+---
+
+## 🔧 四、已解决的问题 / 踩过的坑
+
+| 问题 | 解决 |
+|------|------|
+| 切换模型时旧模型 GPU 资源不释放 → 内存泄漏 | `disposeVRM` 延后 + `VRMUtils.deepDispose` |
+| 40 MB 模型同步 parse 冻屏 1~3s | fetch / parse / frameVRM 三段 + yield |
+| 用户连点模型下拉 → 多个 load 并行 | SWITCH_DEBOUNCE + loadToken 过期 |
+| `resolveResource` 路径少一层 `resources/` | `assetUrl.ts` 手拼路径 |
+| 模型取景对宽高比例敏感 | 用 `headY` / `feetY` 算人型高度，统一从人型顶部取景 |
+| VRMA 循环跳帧 | 改 `LoopPingPong` |
+| `Mio.vrm` 330 MB 撞 GitHub 100 MB 限制 | 删除文件 + 重新整理仓库结构 |
+
+---
+
+## 🚧 五、已知限制
+
+- **动画速度**：`LoopPingPong` 让动作看起来稍慢（目前未调 `setEffectiveTimeScale`）
+- **资源路径**：`assetUrl.ts` 的浏览器 fallback 走 `public/`，但 `main.ts` 在非 Tauri 模式下不扫盘，纯浏览器跑也看不到模型
+- **多模型 blend**：当前不支持 VRMA + 表情混合（blendShape 权重还没接到 UI）
+- **无边框窗口**：`decorations: false` 关掉了标题栏，目前没有自定义拖动区
+
+---
+
+## 🔮 六、未来扩展（未实现）
+
+| 方向 | 说明 | 优先级 |
+|------|------|--------|
+| 表情控制 UI | 把 VRM 的 `expressionManager` 表情列出来，让用户手动调 | 中 |
+| 多动画混合 | `mixer.clipAction(A).weight=0.5 + B.weight=0.5` 平滑过渡 | 中 |
+| 动画速度调节 | UI slider → `action.setEffectiveTimeScale(v)` | 低 |
+| MCP 集成 | 通过 Tauri 的 sidecar / stdio MCP 接收 Claude Code 状态，自动播对应动画 | 高（项目初心） |
+| 自定义拖动区 | 加一个顶栏，允许无边框窗口拖动 | 中 |
+| 资源热重载 | 监听 `resources/assets/` 变化，自动重新扫描 | 低 |
+| 主题/换装 | 加载多套贴图 / 切换服装 | 低 |
+
+---
+
+## 📜 七、版本演进
+
+- **v0.1 — first commit**: 纯 Web + three.js + Vue 3 的 VRM 查看器
+- **v0.2**: 迁移到 Tauri 2 + Vue 3 + three.js，实现本地资源加载
+- **v0.3**: 迁移到 Svelte 5 + runes
+- **v0.4**: 配置 Tauri 资源协议，资源从 `public/` 移到 `src-tauri/resources/`
+- **v0.5**: 重构 VRM 加载管线（fetch/parse 分阶段 + yield），加窗口比例约束
+- **v0.6 (当前)**: VRMA 循环改 `LoopPingPong` 消除跳帧；整理仓库结构（删 `public/assets/`、去掉误加的 .gitignore 规则、补齐资源 commit）
