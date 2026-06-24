@@ -2,6 +2,7 @@
   import { useTask, useThrelte } from "@threlte/core";
   import { onDestroy } from "svelte";
   import {
+    AnimationAction,
     AnimationMixer,
     Box3,
     LoopPingPong,
@@ -30,6 +31,20 @@
   const SWITCH_DEBOUNCE_MS = 200;
   let switchTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingIdx = -1;
+
+  // Cross-fade duration when switching animations. Hard-cutting
+  // (`stopAllAction` + `play`) shows a single bind-pose frame because
+  // the old action is dropped before the new one's first `update(dt)`
+  // has run, leaving bones momentarily on the rig's rest pose.
+  // Fading old → new keeps the bones interpolating continuously and
+  // also masks any awkward t=0 pose in the incoming VRMA.
+  const ANIM_CROSSFADE_S = 0.2;
+  // The animation that's currently driving the model. Tracked
+  // explicitly (rather than by digging into `mixer._actions`) so the
+  // cross-fade has a clear source-of-truth and works on the very
+  // first animation (when mixer._actions is effectively empty
+  // weight-wise).
+  let currentAction: AnimationAction | null = null;
 
   // Reusable scratch vectors/box.
   const _v3a = new Vector3();
@@ -84,7 +99,7 @@
     const fovRad = (cam.fov * Math.PI) / 180;
     // The window is locked to a 3:4 (W:H) aspect, so fitting the body
     // height is what makes the model readable. A small horizontal
-    // multiplier (1.2) pushes the camera slightly further back so
+    // multiplier (1.6) pushes the camera slightly further back so
     // wider characters (e.g. models with spread arms / hair) don't
     // get clipped on the sides of the narrow window.
     const fitDistance =
@@ -177,6 +192,7 @@
     }
     stopMixer();
     mixer = null;
+    currentAction = null;
     clipCache.clear();
     currentRev++; // tell the anim effect to drop its dep
 
@@ -294,17 +310,39 @@
         if (myAnimToken !== animToken) return;
         if (current !== vrm) return;
         if (!mixer) mixer = new AnimationMixer(vrm.scene);
-        stopMixer();
-        const action = mixer.clipAction(clip, vrm.scene);
-        action.reset();
+
+        const newAction = mixer.clipAction(clip, vrm.scene);
+        newAction.reset();
         // Ping-pong looping (forward then reverse) avoids the visible
         // snap-back to the VRMA's frame-0 bind pose that you'd see with
         // plain LoopRepeat: most looping motions (idle, walk, …) are
         // NOT seamless because frame 0 is the A-pose / T-pose, so a
         // hard cut at loop time is jarring. PingPong starts and ends
         // on the same pose, so the cycle boundary is invisible.
-        action.setLoop(LoopPingPong, Infinity);
-        action.play();
+        newAction.setLoop(LoopPingPong, Infinity);
+        newAction.enabled = true;
+        newAction.paused = false;
+
+        // Cross-fade from the currently-playing action (if any) to
+        // the new one. `crossFadeTo` fades the source's weight to 0
+        // and ramps the target's from 0 to 1 over the duration, then
+        // auto-stops the source. This avoids the bind-pose flash that
+        // a hard `stopAllAction() + play()` produces: with the old
+        // code, both old and new actions were simultaneously at
+        // weight 0 between `stopAllAction` and the new action's first
+        // `update(dt)`, leaving the bones on the rig's rest pose for
+        // a single frame.
+        //
+        // On the very first animation there is nothing to fade
+        // from, so just play it directly.
+        const oldAction = currentAction;
+        currentAction = newAction;
+        if (oldAction && oldAction !== newAction) {
+          newAction.play();
+          oldAction.crossFadeTo(newAction, ANIM_CROSSFADE_S, true);
+        } else {
+          newAction.play();
+        }
         appState.status = `▶ ${name}`;
       })
       .catch((e: unknown) => {

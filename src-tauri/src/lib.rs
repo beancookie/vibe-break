@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Pet-window aspect ratio (width / height). 0.75 = 3:4 portrait.
-/// Matches the `width: 600, height: 800` default in tauri.conf.json.
+/// Matches the `width: 1200, height: 1600` default in tauri.conf.json.
 const WINDOW_ASPECT_W_OVER_H: f64 = 0.75;
 
 #[derive(Serialize)]

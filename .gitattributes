@@ -1,0 +1,6 @@
+# Track large binary 3D assets with Git LFS. The repo only stores
+# tiny pointer files; the actual VRM/VRMA bytes live on the LFS
+# server. This keeps the bare repo clone size sane and makes
+# pushes fast even on slow links.
+*.vrm  filter=lfs diff=lfs merge=lfs -text
+*.vrma filter=lfs diff=lfs merge=lfs -text

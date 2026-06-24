@@ -185,6 +185,7 @@
         bind:value={appState.selectedVrm}
         disabled={appState.vrmList.length === 0 || appState.isLoading}
         onclick={(e) => e.stopPropagation()}
+        onchange={close}
         class="border-input bg-background text-foreground focus:ring-ring ring-offset-background placeholder:text-muted-foreground h-7 w-full rounded-md border px-2 text-xs shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
         {#if appState.scanning}
@@ -208,6 +209,7 @@
         bind:value={appState.selectedAnim}
         disabled={appState.animList.length === 0}
         onclick={(e) => e.stopPropagation()}
+        onchange={close}
         class="border-input bg-background text-foreground focus:ring-ring ring-offset-background placeholder:text-muted-foreground h-7 w-full rounded-md border px-2 text-xs shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
         <option value="">— pick —</option>
