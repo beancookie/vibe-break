@@ -4,6 +4,31 @@
   import Scene from "./Scene/Scene.svelte";
   import VrmContextMenu from "./UI/VrmContextMenu.svelte";
   import { appState } from "$lib/stores.svelte";
+  import { savePersistedState } from "$lib/persisted";
+  import type { PersistedState } from "$lib/persisted";
+  import { isTauri } from "$lib/runtime";
+
+  // Persist selected settings back to the Tauri store whenever they
+  // change. Runs only in the Tauri runtime (the import of
+  // @tauri-apps/plugin-store is lazily loaded inside savePersistedState).
+  let persistedJson = $state("");
+  $effect(() => {
+    if (!isTauri()) return;
+    appState.selectedVrm;
+    appState.selectedAnim;
+    appState.petScale;
+    queueMicrotask(() => {
+      const next = JSON.stringify({
+        selectedVrm: appState.selectedVrm,
+        selectedAnim: appState.selectedAnim,
+        petScale: appState.petScale,
+        alwaysOnTop: appState.alwaysOnTop,
+      } satisfies PersistedState);
+      if (next === persistedJson) return;
+      persistedJson = next;
+      savePersistedState(JSON.parse(next));
+    });
+  });
 
   // Custom WebGLRenderer with the right options for a transparent
   // Tauri WebView. The defaults (premultipliedAlpha: true) make the

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { appState } from "$lib/stores.svelte";
+  import { appState, bumpStopToken } from "$lib/stores.svelte";
+  import { UI } from "$lib/strings";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Button from "$lib/components/ui/button.svelte";
   import Separator from "$lib/components/ui/separator.svelte";
@@ -20,7 +21,8 @@
   async function show() {
     try {
       pinned = await getCurrentWindow().isAlwaysOnTop();
-    } catch {
+    } catch (e) {
+      console.warn("isAlwaysOnTop check failed", e);
       pinned = false;
     }
     open = true;
@@ -115,9 +117,14 @@
     // Rule 2: first tap (or a tap that arrived too late / too far
     // to be the second of a double-click). Close the menu if it's
     // currently open - the user clicked outside it. Remember the
-    // tap so a quick second tap can still be recognised.
-    firstTap = { t: now, x: e.clientX, y: e.clientY };
-    if (open) close();
+    // tap only if the menu was already closed, so a closing tap
+    // doesn't trigger a spurious double-click on the next tap.
+    if (open) {
+      close();
+      firstTap = { t: 0, x: 0, y: 0 };
+    } else {
+      firstTap = { t: now, x: e.clientX, y: e.clientY };
+    }
   }
 
   function replayAnim() {
@@ -132,7 +139,7 @@
 
   function stopAnim() {
     appState.selectedAnim = "";
-    appState.stopToken++;
+    bumpStopToken();
     close();
   }
 
@@ -141,6 +148,7 @@
     const next = !pinned;
     await w.setAlwaysOnTop(next);
     pinned = next;
+    appState.alwaysOnTop = next;
     close();
   }
 
@@ -173,13 +181,13 @@
     <div
       class="text-muted-foreground px-2 pb-1.5 pt-1 text-[10px] font-semibold tracking-wider uppercase"
     >
-      Vibe Break
+      {UI.MENU_HEADER}
     </div>
 
     <!-- Model picker -->
     <div class="flex items-center gap-2 px-2 py-1">
       <Label class="text-muted-foreground w-10 text-[11px] font-normal">
-        Model
+        {UI.LABEL_MODEL}
       </Label>
       <select
         bind:value={appState.selectedVrm}
@@ -189,12 +197,12 @@
         class="border-input bg-background text-foreground focus:ring-ring ring-offset-background placeholder:text-muted-foreground h-7 w-full rounded-md border px-2 text-xs shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
         {#if appState.scanning}
-          <option>scanning…</option>
+          <option>{UI.OPTION_SCANNING}</option>
         {:else if appState.vrmList.length === 0}
-          <option>(no .vrm found)</option>
+          <option>{UI.OPTION_NO_VRM}</option>
         {:else}
-          {#each appState.vrmList as v, i (v.url)}
-            <option value={i}>{v.name}</option>
+          {#each appState.vrmList as v (v.url)}
+            <option value={v.name}>{v.name}</option>
           {/each}
         {/if}
       </select>
@@ -203,7 +211,7 @@
     <!-- Animation picker -->
     <div class="flex items-center gap-2 px-2 py-1">
       <Label class="text-muted-foreground w-10 text-[11px] font-normal">
-        Animation
+        {UI.LABEL_ANIMATION}
       </Label>
       <select
         bind:value={appState.selectedAnim}
@@ -212,7 +220,7 @@
         onchange={close}
         class="border-input bg-background text-foreground focus:ring-ring ring-offset-background placeholder:text-muted-foreground h-7 w-full rounded-md border px-2 text-xs shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <option value="">— pick —</option>
+        <option value="">{UI.OPTION_PICK_ANIM}</option>
         {#each appState.animList as a (a.url)}
           <option value={a.url}>{a.name}</option>
         {/each}
@@ -230,7 +238,7 @@
       class="w-full justify-start px-2 font-normal"
     >
       <span aria-hidden="true">▶</span>
-      <span>Replay animation</span>
+      <span>{UI.BUTTON_REPLAY}</span>
     </Button>
 
     <Button
@@ -240,7 +248,7 @@
       class="w-full justify-start px-2 font-normal"
     >
       <span aria-hidden="true">■</span>
-      <span>Stop animation</span>
+      <span>{UI.BUTTON_STOP}</span>
     </Button>
 
     <Separator class="my-1" />
@@ -255,7 +263,7 @@
       <span aria-hidden="true" class="w-4 text-center">
         {pinned ? "✓" : "　"}
       </span>
-      <span>Always on top</span>
+      <span>{UI.BUTTON_ALWAYS_ON_TOP}</span>
     </Button>
 
     <!-- Status -->

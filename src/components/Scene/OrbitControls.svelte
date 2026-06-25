@@ -11,6 +11,7 @@
   import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
   import * as THREE from "three";
   import { appState } from "$lib/stores.svelte";
+  import { STATUS } from "$lib/strings";
 
   const { renderer, camera } = useThrelte();
 
@@ -73,7 +74,7 @@
     appState.petScale = Math.max(PET_SCALE_MIN, Math.min(PET_SCALE_MAX, next));
     // Surface the change in the status bar so the user gets feedback
     // that the wheel event was received.
-    appState.status = `🔍 ${Math.round(appState.petScale * 100)}%`;
+    appState.status = STATUS.ZOOM_PERCENT(Math.round(appState.petScale * 100));
   }
 
   // Register the wheel handler manually with `passive: false` so that

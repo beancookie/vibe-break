@@ -22,13 +22,18 @@
   });
 
   const mouse = new Vector2(0, 0);
+  let lastMouseX = 0;
+  let lastMouseY = 0;
   const _ndc = new Vector3();
   const _dir = new Vector3();
 
   useTask(() => {
-    const cam = camera.current as PerspectiveCamera | undefined;
-    if (!cam) return;
-    _ndc.set(mouse.x, mouse.y, 0.5).unproject(cam);
+    const cam = camera.current;
+    if (!cam || !("fov" in cam)) return;
+    if (mouse.x === lastMouseX && mouse.y === lastMouseY) return;
+    lastMouseX = mouse.x;
+    lastMouseY = mouse.y;
+    _ndc.set(mouse.x, mouse.y, 0.5).unproject(cam as PerspectiveCamera);
     _dir.copy(_ndc).sub(cam.position).normalize();
     lookTarget.position.copy(cam.position).addScaledVector(_dir, 2.0);
     const baseY = appState.cameraTarget[1];

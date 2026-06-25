@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "vibe-break",
+            "tool": "report_event",
+            "input": {
+              "tool_name": "${tool_name}",
+              "ts": "${timestamp}"
+            }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "vibe-break",
+            "tool": "report_event",
+            "input": {
+              "tool_name": "Stop",
+              "ts": "${timestamp}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

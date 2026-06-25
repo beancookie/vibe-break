@@ -1,3 +1,5 @@
+mod mcp_server;
+
 use serde::Serialize;
 use tauri::Manager;
 use std::fs;
@@ -56,11 +58,6 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
         }
     }
 
-    eprintln!("[list_assets] candidates:");
-    for b in &bases {
-        eprintln!("  - {} (exists={})", b.display(), b.exists());
-    }
-
     for base in &bases {
         let assets_dir = base.join("assets");
         if !assets_dir.exists() {
@@ -89,7 +86,12 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
+            // Start the MCP HTTP server (background tokio task) so Claude Code
+            // can connect and push coding events via the report_event tool.
+            mcp_server::start(app.handle().clone());
+
             // The asset:// protocol scope is configured in
             // tauri.conf.json. In Tauri 2 the static scope patterns may
             // not match all resolved paths (depending on the build

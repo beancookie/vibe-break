@@ -12,7 +12,8 @@
   } from "three";
   import { VRM } from "@pixiv/three-vrm";
   import { loadVRM, loadVRMAClip, disposeVRM } from "$lib/three/useVrm";
-  import { appState, lookTarget } from "$lib/stores.svelte";
+  import { appState, lookTarget, setStatus, setLoading, setCameraTarget, setSelectedAnim } from "$lib/stores.svelte";
+  import { STATUS } from "$lib/strings";
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
   const { scene, camera } = useThrelte();
@@ -57,6 +58,14 @@
     if (!mixer) return;
     mixer.stopAllAction();
     mixer.setTime(0);
+  }
+
+  function disposeMixer(vrm: VRM | null) {
+    if (!mixer) return;
+    if (vrm) mixer.uncacheRoot(vrm.scene);
+    mixer.stopAllAction();
+    mixer = null;
+    currentAction = null;
   }
 
   /**
@@ -123,7 +132,7 @@
     cam.lookAt(0, targetY, 0);
     cam.updateProjectionMatrix();
 
-    appState.cameraTarget = [0, targetY, 0];
+    setCameraTarget([0, targetY, 0]);
 
     // Cache the natural height so the petScale effect can recompute
     // the window size when the user zooms.
@@ -169,118 +178,70 @@
       .catch((err: unknown) => console.warn("setSize failed", err));
   }
 
-  /**
-   * Perform the actual model load + swap. Called both directly and
-   * from the debounce timer. Bails out if `idx` is no longer the
-   * currently-selected model (e.g. the user picked something else
-   * during the debounce window).
-   */
-  function startLoad(idx: number) {
+  async function startLoad(idx: number) {
     if (idx === lastLoadedIdx) return;
     if (idx < 0 || idx >= appState.vrmList.length) return;
     lastLoadedIdx = idx;
     const meta = appState.vrmList[idx];
     const myToken = ++loadToken;
 
-    // Capture the old model so we can dispose it once the new one is
-    // ready, then immediately drop it from the scene so the user sees
-    // instant feedback (the window goes transparent while loading).
     const oldVrm = current;
     current = null;
-    if (oldVrm) {
-      scene.remove(oldVrm.scene);
-    }
-    stopMixer();
-    mixer = null;
-    currentAction = null;
+    if (oldVrm) scene.remove(oldVrm.scene);
+    disposeMixer(oldVrm);
     clipCache.clear();
-    currentRev++; // tell the anim effect to drop its dep
 
-    appState.status = `Loading ${meta.name}…`;
-    appState.isLoading = true;
+    setStatus(STATUS.LOADING_VRM(meta.name));
+    setLoading(true);
 
-    loadVRM(meta.url)
-      .then(async (vrm: VRM) => {
-        if (myToken !== loadToken) {
-          // A newer load has been kicked off; just dispose this one in
-          // the background and bail.
-          disposeVRM(vrm);
-          return;
-        }
-        // The new model is ready - swap it in. The previous model (if
-        // any) was already removed from the scene; now we can finally
-        // release its GPU resources. disposeVRM defers the actual
-        // deepDispose to a later task so it doesn't freeze the frame
-        // we're about to draw.
-        if (oldVrm) {
-          disposeVRM(oldVrm);
-        }
-        current = vrm;
-        // Hide the new model until the first frame of the active
-        // animation has been applied. VRM models load in their bind
-        // pose (T-pose / A-pose); without this gate the user would
-        // see the bind pose flash for the few hundred ms it takes to
-        // fetch + parse the VRMA clip. The anim effect flips
-        // `vrm.scene.visible` back to true after the first play().
-        vrm.scene.visible = false;
-        scene.add(vrm.scene);
-        currentRev++; // notify the anim effect
+    try {
+      const vrm = await loadVRM(meta.url);
+      if (myToken !== loadToken) { disposeVRM(vrm); return; }
+      if (oldVrm) disposeVRM(oldVrm);
+      current = vrm;
+      vrm.scene.visible = false;
+      scene.add(vrm.scene);
+      currentRev++;
 
-        if (vrm.lookAt) vrm.lookAt.target = lookTarget;
+      if (vrm.lookAt) vrm.lookAt.target = lookTarget;
+      if (!appState.selectedAnim && appState.animList.length > 0) {
+        setSelectedAnim(appState.animList[0].url);
+      }
 
-        // If the user (or the startup path in main.ts) hasn't picked
-        // an animation yet, default to the first available one so the
-        // model comes alive instead of freezing in the bind pose.
-        // Mutating selectedAnim also re-fires the anim effect, which
-        // is the path that flips vrm.scene.visible back to true.
-        if (!appState.selectedAnim && appState.animList.length > 0) {
-          appState.selectedAnim = appState.animList[0].url;
-        }
+      await yieldToMain();
+      if (myToken !== loadToken) return;
+      vrm.scene.updateMatrixWorld(true);
+      frameVRM(vrm);
 
-        // updateMatrixWorld walks the whole scene graph; for a 40 MB
-        // VRM with thousands of Object3Ds that's 50–150 ms of blocking
-        // work. yieldToMain first so the "Loaded X" status has a
-        // chance to render before we keep the main thread busy.
-        await yieldToMain();
-        if (myToken !== loadToken) return;
-        vrm.scene.updateMatrixWorld(true);
-        frameVRM(vrm);
+      setStatus(STATUS.LOADED_VRM(meta.name));
+      setLoading(false);
+    } catch (e: unknown) {
+      if (myToken !== loadToken) return;
+      const msg = e instanceof Error ? (e.message || e.name || "Error") : String(e);
+      setStatus(STATUS.VRM_LOAD_FAILED(meta.url, msg));
+      setLoading(false);
+      if (oldVrm) disposeVRM(oldVrm);
+      lastLoadedIdx = -1;
+    }
+  }
 
-        appState.status = `Loaded ${meta.name}`;
-        appState.isLoading = false;
-      })
-      .catch((e: unknown) => {
-        if (myToken !== loadToken) {
-          // A newer load superseded us; the previous-model dispose
-          // for the winning request will run there. Nothing to do.
-          return;
-        }
-        const msg = e instanceof Error ? (e.message || e.name || "Error") : String(e);
-        appState.status = `[VRM] load FAILED ${meta.url}: ${msg}`;
-        appState.isLoading = false;
-        // We failed before we could replace the old model - free its
-        // GPU resources now so the user can retry without leaking.
-        if (oldVrm) {
-          disposeVRM(oldVrm);
-        }
-        // Treat the failed model as "not loaded" so the next pick
-        // (or re-select of the same one) will re-enter startLoad.
-        lastLoadedIdx = -1;
-      });
+  function nameToVrmIdx(name: string): number {
+    return appState.vrmList.findIndex((v) => v.name === name);
   }
 
   // ---- Selected VRM -> debounced load + dispose ----
   $effect(() => {
-    const idx = appState.selectedVrm;
+    const name = appState.selectedVrm;
     if (appState.scanning) {
-      appState.status = `[VRM] scanning…`;
+      setStatus(STATUS.SCANNING_VRM);
       return;
     }
     if (appState.vrmList.length === 0) {
-      appState.status = `[VRM] no models found`;
+      setStatus(STATUS.NO_VRMS);
       return;
     }
-    if (idx < 0 || idx >= appState.vrmList.length) return;
+    const idx = nameToVrmIdx(name);
+    if (idx < 0) return;
     if (idx === lastLoadedIdx) return;
 
     // Debounce: only the final selection within SWITCH_DEBOUNCE_MS
@@ -363,11 +324,12 @@
         // Until this point the scene was hidden in startLoad() to
         // avoid flashing the bind pose.
         vrm.scene.visible = true;
-        appState.status = `▶ ${name}`;
+        setStatus(STATUS.ANIM_PLAYING(name));
       })
       .catch((e: unknown) => {
         if (myAnimToken !== animToken) return;
-        appState.status = `Anim error: ${(e as Error).message}`;
+        const msg = e instanceof Error ? e.message : String(e);
+        setStatus(STATUS.ANIM_ERROR(msg));
         console.error(e);
       });
   });
@@ -376,6 +338,7 @@
   $effect(() => {
     appState.stopToken;
     stopMixer();
+    if (current) current.scene.visible = true;
   });
 
   // ---- petScale: user-controlled model+window zoom ----
@@ -414,9 +377,8 @@
     if (current) {
       scene.remove(current.scene);
       disposeVRM(current);
+      disposeMixer(current);
       current = null;
     }
-    stopMixer();
-    mixer = null;
   });
 </script>

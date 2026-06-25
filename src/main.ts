@@ -2,48 +2,86 @@ import { mount } from "svelte";
 import "./app.css";
 import VrmViewer from "./components/VrmViewer.svelte";
 import { listAssets } from "$lib/three/loadAssets";
-import { isTauri } from "$lib/three/tauri";
-import { appState } from "$lib/stores.svelte";
+import { isTauri } from "$lib/runtime";
+import { STATUS, ERROR } from "$lib/strings";
+import { appState, setVrmList, setAnimList, setScanning, setStatus, setSelectedVrm, setSelectedAnim, setPetScale } from "$lib/stores.svelte";
+import { loadPersistedState } from "$lib/persisted";
 
-const target = document.getElementById("app");
-if (!target) throw new Error("Missing #app root element");
+const target = document.getElementById("app") as HTMLDivElement | null;
+if (!target) {
+  throw new Error(ERROR.NO_APP_ROOT);
+}
 
 const app = mount(VrmViewer, { target });
 
-// Kick off the asset scan in parallel with the UI mounting.
-if (isTauri()) {
-  listAssets()
-    .then((all) => {
-      const vrms = all.filter((a) => a.url.toLowerCase().endsWith(".vrm"));
-      const vrmas = all.filter((a) => a.url.toLowerCase().endsWith(".vrma"));
-      appState.vrmList = vrms;
-      appState.animList = vrmas;
-      appState.scanning = false;
-      if (vrms.length === 0) {
-        appState.status =
-          "No .vrm models found. Drop files into src-tauri/resources/assets/ and rebuild.";
-        return;
-      }
-      // Auto-pick the first animation so the pet comes alive on
-      // startup. VrmModel reacts to selectedAnim changes and starts
-      // playing automatically.
-      if (vrmas.length > 0) {
-        appState.selectedAnim = vrmas[0].url;
-      }
-      appState.status = "Loaded - drag to rotate, scroll to zoom";
-    })
-    .catch((err) => {
-      appState.scanning = false;
-      appState.status = `Asset scan failed: ${(err as Error).message ?? err}`;
-      console.error(err);
-    });
-} else {
-  // Browser fallback.
-  appState.scanning = false;
-  appState.vrmList = [];
-  appState.animList = [];
-  appState.status =
-    "Browser preview mode. Run `pnpm tauri dev` to load real VRM models.";
+async function restorePersisted(): Promise<void> {
+  const saved = await loadPersistedState();
+  if (saved.selectedVrm) setSelectedVrm(saved.selectedVrm);
+  if (saved.selectedAnim) setSelectedAnim(saved.selectedAnim);
+  if (saved.petScale !== 1.0) setPetScale(saved.petScale);
+  if (saved.alwaysOnTop) {
+    setScanning(true);
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().setAlwaysOnTop(true);
+    } catch (e) { console.warn("restore alwaysOnTop failed", e); }
+  }
 }
+
+async function scanAssets(): Promise<void> {
+  const all = await listAssets();
+  const vrms = all.filter((a) => a.url.toLowerCase().endsWith(".vrm"));
+  const vrmas = all.filter((a) => a.url.toLowerCase().endsWith(".vrma"));
+  setVrmList(vrms);
+  setAnimList(vrmas);
+
+  if (vrms.length === 0) {
+    setStatus(STATUS.NO_MODELS);
+    return;
+  }
+
+  if (!appState.selectedAnim && vrmas.length > 0) {
+    setSelectedAnim(vrmas[0].url);
+  }
+
+  const idx = vrms.findIndex((v) => v.name === appState.selectedVrm);
+  if (idx < 0 && vrms.length > 0) {
+    setSelectedVrm(vrms[0].name);
+  }
+
+  setStatus(STATUS.LOADED);
+}
+
+async function initBrowserFallback(): Promise<void> {
+  setScanning(false);
+  setVrmList([]);
+  setAnimList([]);
+  setStatus(STATUS.BROWSER_PREVIEW);
+}
+
+async function init(): Promise<void> {
+  if (isTauri()) {
+    await restorePersisted();
+    try {
+      await scanAssets();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatus(`${STATUS.SCAN_FAILED} ${msg}`);
+      console.error(err);
+    } finally {
+      setScanning(false);
+    }
+
+    // Start MCP bridge and animation controller.
+    const { startMcpBridge } = await import("$lib/mcpBridge.svelte");
+    const { startAnimationController } = await import("$lib/animationController.svelte");
+    await startMcpBridge();
+    startAnimationController();
+  } else {
+    await initBrowserFallback();
+  }
+}
+
+init().catch(console.error);
 
 export default app;
