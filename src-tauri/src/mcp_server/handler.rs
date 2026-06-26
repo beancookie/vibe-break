@@ -17,12 +17,24 @@ pub(super) async fn handle(
         "[vibe-break:mcp] INFO  report_event: tool_name={tool_name} ts={ts}"
     );
 
+    eprintln!(
+        "[vibe-break:mcp] DEBUG  → raw tool_input: {:?}",
+        tool_input,
+    );
+
     let parsed = parse_event(tool_name, tool_input);
 
     eprintln!(
         "[vibe-break:mcp] DEBUG  → mapped: type={} actions={}",
         parsed.event_type, parsed.actions.len(),
     );
+
+    for (i, a) in parsed.actions.iter().enumerate() {
+        eprintln!(
+            "[vibe-break:mcp] DEBUG  → action[{}]: type={} name={:?} url={:?}",
+            i, a.action_type, a.name, a.url,
+        );
+    }
 
     let actions: Vec<Value> = parsed
         .actions
@@ -41,6 +53,11 @@ pub(super) async fn handle(
             })
         })
         .collect();
+
+    eprintln!(
+        "[vibe-break:mcp] DEBUG  → final actions payload: {:?}",
+        actions,
+    );
 
     let payload = json!({
         "type": parsed.event_type,
