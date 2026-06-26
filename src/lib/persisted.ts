@@ -1,5 +1,5 @@
 import type { Store } from "@tauri-apps/plugin-store";
-import { isTauri } from "$lib/runtime";
+import { isTauri } from "@tauri-apps/api/core";
 
 export interface PersistedState {
   selectedVrm: string;

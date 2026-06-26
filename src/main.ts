@@ -2,7 +2,7 @@ import { mount } from "svelte";
 import "./app.css";
 import VrmViewer from "./components/VrmViewer.svelte";
 import { listAssets } from "$lib/three/loadAssets";
-import { isTauri } from "$lib/runtime";
+import { isTauri } from "@tauri-apps/api/core";
 import { STATUS, ERROR } from "$lib/strings";
 import { appState, setVrmList, setAnimList, setScanning, setStatus, setSelectedVrm, setSelectedAnim, setPetScale } from "$lib/stores.svelte";
 import { loadPersistedState } from "$lib/persisted";
@@ -50,7 +50,7 @@ async function scanAssets(): Promise<void> {
     setSelectedVrm(vrms[0].name);
   }
 
-  setStatus(STATUS.LOADED);
+  setStatus(STATUS.INITIALIZING);
 }
 
 async function initBrowserFallback(): Promise<void> {
@@ -73,11 +73,8 @@ async function init(): Promise<void> {
       setScanning(false);
     }
 
-    // Start MCP bridge and animation controller.
     const { startMcpBridge } = await import("$lib/mcpBridge.svelte");
-    const { startAnimationController } = await import("$lib/animationController.svelte");
     await startMcpBridge();
-    startAnimationController();
   } else {
     await initBrowserFallback();
   }

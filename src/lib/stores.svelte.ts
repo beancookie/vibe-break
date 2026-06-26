@@ -1,8 +1,9 @@
-import { Object3D } from "three";
-import type { AssetEntry } from "$lib/types";
 import { STATUS } from "$lib/strings";
 
-export type { AssetEntry };
+export interface AssetEntry {
+  name: string;
+  url: string;
+}
 
 export interface McpCounters {
   filesWritten: number;
@@ -107,8 +108,4 @@ export function bumpStopToken() {
   appState.stopToken++;
 }
 
-/**
- * Shared world-space Object3D that VRM models look at (head/eye tracking).
- */
-export const lookTarget = new Object3D();
-lookTarget.position.set(0, 1.2, 0);
+

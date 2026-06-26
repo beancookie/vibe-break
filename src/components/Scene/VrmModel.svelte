@@ -12,10 +12,14 @@
   } from "three";
   import { VRM, type VRMHumanBoneName } from "@pixiv/three-vrm";
   import { loadVRM, loadVRMAClip, disposeVRM } from "$lib/three/useVrm";
-  import { appState, lookTarget, setStatus, setLoading, setCameraTarget, setSelectedAnim } from "$lib/stores.svelte";
+  import { appState, setStatus, setLoading, setCameraTarget, setSelectedAnim } from "$lib/stores.svelte";
   import { STATUS } from "$lib/strings";
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import { logger } from "$lib/logger";
+
+  function errorMessage(e: unknown): string {
+    return e instanceof Error ? (e.message || e.name || "Error") : String(e);
+  }
 
   const { scene, camera } = useThrelte();
 
@@ -59,6 +63,7 @@
     if (!mixer) return;
     mixer.stopAllAction();
     mixer.setTime(0);
+    currentAction = null;
   }
 
   function disposeMixer(vrm: VRM | null) {
@@ -69,18 +74,10 @@
     currentAction = null;
   }
 
-  /**
-   * Yield to the browser so it can paint / process input between the
-   * heavy phases of the load pipeline. Mirrors `useVrm.ts`.
-   */
-  const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
+  let lastNaturalHeight = $state(1);
+  let lastCameraTarget = $state(0);
 
-  /**
-   * Frame the camera so the model is fully visible regardless of its
-   * actual height. Reads the human bone positions (head, hips, feet)
-   * to compute a target and distance that fits the model.
-   */
-  function frameVRM(vrm: VRM) {
+  function frameCamera(vrm: VRM) {
     const cam = camera.current as PerspectiveCamera | undefined;
     if (!cam) return;
 
@@ -105,42 +102,31 @@
     }
 
     const height = Math.max(0.1, top - bottom);
+    const targetY = (headY ?? top) - height * 0.4;
 
+    lastNaturalHeight = height;
+    lastCameraTarget = targetY;
+    applyCamera(height, targetY, 1);
+  }
+
+  function applyCamera(height: number, targetY: number, scale: number) {
+    const cam = camera.current as PerspectiveCamera | undefined;
+    if (!cam) return;
+
+    const scaledHeight = height * scale;
+    const scaledTarget = targetY * scale;
     const fovRad = (cam.fov * Math.PI) / 180;
-    // The window is locked to a 3:4 (W:H) aspect, so fitting the body
-    // height is what makes the model readable. A small horizontal
-    // multiplier (1.6) pushes the camera slightly further back so
-    // wider characters (e.g. models with spread arms / hair) don't
-    // get clipped on the sides of the narrow window.
-    const fitDistance =
-      (height / 2 / Math.tan(fovRad / 2)) * 1.6;
-    const distance = Math.max(fitDistance, 0.6);
+    const distance = Math.max((scaledHeight / 2 / Math.tan(fovRad / 2)) * 1.6, 0.6);
 
     const dir = _v3e.set(cam.position.x, 0, cam.position.z);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
     dir.normalize();
 
-    // Look at a point below the head so the head sits near the top
-    // of the frame and the feet trail off the bottom. The target is
-    // `headY - 0.45 * height` which empirically puts the head near
-    // the top edge.
-    const targetY = (headY ?? top) - height * 0.4;
-    cam.position.set(
-      dir.x * distance,
-      targetY + height * 0.4,
-      dir.z * distance,
-    );
-    cam.lookAt(0, targetY, 0);
+    cam.position.set(dir.x * distance, scaledTarget + scaledHeight * 0.4, dir.z * distance);
+    cam.lookAt(0, scaledTarget, 0);
     cam.updateProjectionMatrix();
 
-    setCameraTarget([0, targetY, 0]);
-
-    // Cache the natural height so the petScale effect can recompute
-    // the window size when the user zooms.
-    lastNaturalHeight = height;
-
-    // Resize the OS window to closely fit the model.
-    resizeWindowToVRM(vrm, height);
+    setCameraTarget([0, scaledTarget, 0]);
   }
 
   /**
@@ -155,24 +141,20 @@
    * resize event (which the Rust hook corrects) never has to fight
    * the JS one.
    */
+  const PX_PER_UNIT = 360;
+  const MIN_WIN_H = 600;
+  const MIN_WIN_W = 300;
+
   function resizeWindowToVRM(vrm: VRM, naturalHeight: number) {
     const scale = appState.petScale;
     _box.setFromObject(vrm.scene);
     const modelHeight = naturalHeight * scale;
 
-    const PX_PER_UNIT = 360;
-    // Top margin is 0 so the head sits at the very top edge; bottom
-    // margin is large because the camera is framed to push the feet
-    // below the viewport. The two side margins are kept symmetric.
-    const marginH = 32;
-
-    // Compute height from the model's natural height, then derive the
-    // width from a fixed 3:4 (W:H) ratio.
     const h = Math.max(
-      400,
-      Math.min(1800, Math.round(modelHeight * PX_PER_UNIT) + marginH * 2),
+      MIN_WIN_H,
+      Math.min(1800, Math.round(modelHeight * PX_PER_UNIT) + 64),
     );
-    const w = Math.max(180, Math.min(1200, Math.round(h * 0.75)));
+    const w = Math.max(MIN_WIN_W, Math.min(1200, Math.round(h * 0.75)));
 
     getCurrentWindow()
       .setSize(new LogicalSize(w, h))
@@ -204,22 +186,20 @@
       scene.add(vrm.scene);
       currentRev++;
 
-      if (vrm.lookAt) vrm.lookAt.target = lookTarget;
       if (!appState.selectedAnim && appState.animList.length > 0) {
         setSelectedAnim(appState.animList[0].url);
       }
 
-      await yieldToMain();
+      await new Promise((r) => setTimeout(r, 0));
       if (myToken !== loadToken) return;
       vrm.scene.updateMatrixWorld(true);
-      frameVRM(vrm);
+      frameCamera(vrm);
 
       setStatus(STATUS.LOADED_VRM(meta.name));
       setLoading(false);
     } catch (e: unknown) {
       if (myToken !== loadToken) return;
-      const msg = e instanceof Error ? (e.message || e.name || "Error") : String(e);
-      setStatus(STATUS.VRM_LOAD_FAILED(meta.url, msg));
+      setStatus(STATUS.VRM_LOAD_FAILED(meta.url, errorMessage(e)));
       setLoading(false);
       if (oldVrm) disposeVRM(oldVrm);
       lastLoadedIdx = -1;
@@ -329,8 +309,7 @@
       })
       .catch((e: unknown) => {
         if (myAnimToken !== animToken) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        setStatus(STATUS.ANIM_ERROR(msg));
+        setStatus(STATUS.ANIM_ERROR(errorMessage(e)));
         logger.error("[VRM]", "animation load failed", e);
       });
   });
@@ -342,24 +321,20 @@
     if (current) current.scene.visible = true;
   });
 
-  // ---- petScale: user-controlled model+window zoom ----
-  // Apply the user-controlled scale to the model's scene and resize
-  // the OS window to match. The natural height is captured in
-  // `lastNaturalHeight` (set after frameVRM runs).
-  let lastNaturalHeight = 0.5;
   $effect(() => {
+    let s = appState.petScale;
+    if (current && lastNaturalHeight > 0) {
+      const rawH = Math.round(lastNaturalHeight * s * PX_PER_UNIT) + 64;
+      if (rawH < MIN_WIN_H) {
+        s = (MIN_WIN_H - 64) / PX_PER_UNIT / lastNaturalHeight;
+        appState.petScale = s;
+      }
+    }
     if (current) {
-      const s = appState.petScale;
       current.scene.scale.setScalar(s);
     }
-  });
-  // When scale changes, resize the window. We can't read appState
-  // inside the previous effect after setting the scale (that would
-  // re-fire), so this effect depends on petScale alone and uses the
-  // cached natural height + current vrm.
-  $effect(() => {
-    void appState.petScale; // register dep
     if (current && lastNaturalHeight > 0) {
+      applyCamera(lastNaturalHeight, lastCameraTarget, s);
       resizeWindowToVRM(current, lastNaturalHeight);
     }
   });
@@ -386,7 +361,6 @@
     appState.pendingBonePose = null;
   });
 
-  // ---- Per-frame update ----
   useTask((dt: number) => {
     current?.update(dt);
     mixer?.update(dt);

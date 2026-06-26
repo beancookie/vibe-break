@@ -1,4 +1,3 @@
-import { isTauri, invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { ERROR } from "$lib/strings";
 
 export class AssetListError extends Error {
@@ -14,5 +13,3 @@ export class NotTauriError extends AssetListError {
     this.name = "NotTauriError";
   }
 }
-
-export { isTauri, invoke, convertFileSrc };

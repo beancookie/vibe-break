@@ -9,21 +9,21 @@
   import { useTask, useThrelte } from "@threlte/core";
   import { onDestroy, onMount } from "svelte";
   import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-  import * as THREE from "three";
+  import type { PerspectiveCamera, OrthographicCamera } from "three";
   import { appState } from "$lib/stores.svelte";
   import { STATUS } from "$lib/strings";
 
   const { renderer, camera } = useThrelte();
 
   let controls: ThreeOrbitControls | null = null;
-  const PET_SCALE_MIN = 0.3;
+  const PET_SCALE_MIN = 0.5;
   const PET_SCALE_MAX = 3.0;
   const PET_SCALE_STEP = 1.15;
 
   $effect(() => {
     const cam = camera.current as
-      | THREE.PerspectiveCamera
-      | THREE.OrthographicCamera
+      | PerspectiveCamera
+      | OrthographicCamera
       | undefined;
     if (!cam) return;
     const c = new ThreeOrbitControls(cam, renderer.domElement);

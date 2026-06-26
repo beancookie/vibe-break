@@ -1,4 +1,5 @@
-import { isTauri, invoke, NotTauriError } from "$lib/runtime";
+import { isTauri, invoke } from "@tauri-apps/api/core";
+import { NotTauriError } from "$lib/errors";
 import type { AssetEntry } from "$lib/stores.svelte";
 
 export async function listAssets(): Promise<AssetEntry[]> {

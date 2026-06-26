@@ -5,8 +5,7 @@
   import VrmContextMenu from "./UI/VrmContextMenu.svelte";
   import { appState } from "$lib/stores.svelte";
   import { savePersistedState } from "$lib/persisted";
-  import type { PersistedState } from "$lib/persisted";
-  import { isTauri } from "$lib/runtime";
+  import { isTauri } from "@tauri-apps/api/core";
 
   // Persist selected settings back to the Tauri store whenever they
   // change. Runs only in the Tauri runtime (the import of
@@ -23,7 +22,7 @@
         selectedAnim: appState.selectedAnim,
         petScale: appState.petScale,
         alwaysOnTop: appState.alwaysOnTop,
-      } satisfies PersistedState);
+      });
       if (next === persistedJson) return;
       persistedJson = next;
       savePersistedState(JSON.parse(next));
@@ -51,11 +50,6 @@
     <Scene />
   </Canvas>
 
-  <!-- Loading indicator. VRM parse is a 1-3 s synchronous block on
-       the main thread, so the WebView can't repaint anything during
-       that window. The spinner is a CSS animation - it doesn't
-       depend on the WebGL renderer, so it keeps spinning smoothly
-       even while the main thread is busy parsing. -->
   {#if appState.isLoading}
     <div class="loading-overlay" aria-hidden="true">
       <div class="spinner"></div>
@@ -134,4 +128,5 @@
       transform: rotate(360deg);
     }
   }
+
 </style>

@@ -81,11 +81,6 @@
   body {
     @apply bg-background text-foreground;
   }
-}
-
-/* Tauri transparent-window reset. The body must stay transparent so the
-   desktop composes through; the canvas / app host fill the window. */
-@layer base {
   html,
   body,
   #app {

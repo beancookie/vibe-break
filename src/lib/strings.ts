@@ -1,7 +1,6 @@
 export const STATUS = {
   INITIALIZING: "Initializing...",
   NO_MODELS: "No .vrm models found. Drop files into src-tauri/resources/assets/ and rebuild.",
-  LOADED: "Loaded - drag to rotate, scroll to zoom",
   BROWSER_PREVIEW: "Browser preview mode. Run `pnpm tauri dev` to load real VRM models.",
   SCAN_FAILED: "Asset scan failed:",
   SCANNING_VRM: "[VRM] scanning…",
@@ -12,13 +11,9 @@ export const STATUS = {
   ANIM_PLAYING: (name: string) => `▶ ${name}`,
   ANIM_ERROR: (msg: string) => `Anim error: ${msg}`,
   ZOOM_PERCENT: (pct: number) => `🔍 ${pct}%`,
-  // MCP / AI statuses
   THINKING: "🤔 Thinking...",
   DONE: "✅ Done!",
   ERROR_MSG: "❌ Error",
-  IDLE: "Idle",
-  FILE_WRITTEN: (n: number) => `📝 Files written: ${n}`,
-  COMMAND_RUN: (n: number) => `⚡ Commands run: ${n}`,
 } as const;
 
 export const ERROR = {
