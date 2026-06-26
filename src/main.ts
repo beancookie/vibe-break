@@ -82,4 +82,6 @@ async function init(): Promise<void> {
 
 init().catch((err) => logger.error("[Init]", "init failed", err));
 
+(window as any).__appState = appState;
+
 export default app;

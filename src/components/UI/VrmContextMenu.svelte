@@ -267,9 +267,12 @@
       <span>{UI.BUTTON_ALWAYS_ON_TOP}</span>
     </Button>
 
-    <!-- Status -->
+    <div class="text-muted-foreground mt-1 px-2 pt-1 pb-0 text-[10px]">
+      📝 {appState.counters.filesWritten}  ⚡ {appState.counters.commandsRun}
+    </div>
+
     <div
-      class="text-muted-foreground mt-1 px-2 pt-1 pb-0.5 text-[10px] italic"
+      class="text-muted-foreground px-2 pt-0.5 pb-0.5 text-[10px] italic"
     >
       {appState.status}
     </div>

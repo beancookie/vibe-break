@@ -3,6 +3,8 @@
   import * as THREE from "three";
   import Scene from "./Scene/Scene.svelte";
   import VrmContextMenu from "./UI/VrmContextMenu.svelte";
+  import Barrage from "./UI/Barrage.svelte";
+  import EncouragementBubble from "./UI/EncouragementBubble.svelte";
   import { appState } from "$lib/stores.svelte";
   import { savePersistedState } from "$lib/persisted";
   import { isTauri } from "@tauri-apps/api/core";
@@ -59,6 +61,8 @@
 
 <!-- Right-click anywhere to open the control menu. -->
 <VrmContextMenu />
+<Barrage />
+<EncouragementBubble />
 
 <style>
   /* Reset the entire page to transparent so the Tauri WebView
