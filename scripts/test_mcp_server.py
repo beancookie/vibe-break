@@ -137,24 +137,6 @@ class TestToolCall:
         result = _get_result(_mcp("tools/call", params).json())
         assert result["ok"] is True
 
-    def test_with_tool_input(self):
-        _initialize()
-        params = {
-            "name": "report_event",
-            "arguments": {"tool_name": "Write", "tool_input": {"file_path": "src/test.ts"}, "ts": 2000},
-        }
-        result = _get_result(_mcp("tools/call", params).json())
-        assert result["ok"] is True
-
-    def test_with_bash_input(self):
-        _initialize()
-        params = {
-            "name": "report_event",
-            "arguments": {"tool_name": "Bash", "tool_input": {"command": "pnpm test"}, "ts": 3000},
-        }
-        result = _get_result(_mcp("tools/call", params).json())
-        assert result["ok"] is True
-
     def test_timestamp_zero(self):
         _initialize()
         data = _mcp("tools/call", {"name": "report_event", "arguments": {"tool_name": "Stop", "ts": 0}}).json()
@@ -172,6 +154,60 @@ class TestToolCall:
         data = _mcp("tools/call", {"name": "report_event", "arguments": {}}).json()
         result = _get_result(data)
         assert result["ok"] is True
+
+
+# =========================================================================
+# Actions (_actions)
+# =========================================================================
+
+
+class TestActions:
+    def test_single_action(self):
+        _initialize()
+        params = {
+            "name": "report_event",
+            "arguments": {
+                "tool_name": "Write",
+                "tool_input": {
+                    "_actions": [
+                        {"type": "play_anim", "name": "Clapping", "speed": 1.2}
+                    ]
+                },
+                "ts": 1000,
+            },
+        }
+        result = _get_result(_mcp("tools/call", params).json())
+        assert result["ok"] is True
+
+    def test_multiple_actions(self):
+        _initialize()
+        params = {
+            "name": "report_event",
+            "arguments": {
+                "tool_name": "Read",
+                "tool_input": {
+                    "_actions": [
+                        {"type": "play_anim", "name": "Sleepy"},
+                        {"type": "expression", "name": "happy", "weight": 0.8},
+                        {"type": "bone_pose", "bone": "head", "x": 0.3, "y": 0.0, "z": 0.0},
+                    ]
+                },
+                "ts": 2000,
+            },
+        }
+        result = _get_result(_mcp("tools/call", params).json())
+        assert result["ok"] is True
+
+    def test_actions_empty_or_omitted(self):
+        _initialize()
+        for args in [
+            {"tool_name": "Write", "tool_input": {"_actions": []}},
+            {"tool_name": "Write"},
+            {"tool_name": "Edit", "tool_input": {"_actions": "not an array"}},
+        ]:
+            params = {"name": "report_event", "arguments": args}
+            result = _get_result(_mcp("tools/call", params).json())
+            assert result["ok"] is True, f"Failed for args={args}"
 
 
 # =========================================================================

@@ -1,6 +1,32 @@
 import { listen } from "@tauri-apps/api/event";
 import { appState } from "$lib/stores.svelte";
-import { emit, type McpEventPayload } from "$lib/eventBus.svelte";
+import { emit, type McpEventPayload, type ActionCommand } from "$lib/eventBus.svelte";
+
+function handleActions(actions: ActionCommand[]) {
+  for (const action of actions) {
+    switch (action.type) {
+      case "play_anim":
+        if (action.url) {
+          appState.selectedAnim = action.url;
+        } else if (action.name) {
+          const match = appState.animList.find((a) => a.name === action.name);
+          if (match) appState.selectedAnim = match.url;
+        }
+        break;
+      case "expression":
+        appState.pendingExpression = { name: action.name ?? "", weight: action.weight ?? 1.0 };
+        break;
+      case "bone_pose":
+        appState.pendingBonePose = {
+          bone: action.bone ?? "",
+          x: action.x ?? 0,
+          y: action.y ?? 0,
+          z: action.z ?? 0,
+        };
+        break;
+    }
+  }
+}
 
 export async function startMcpBridge(): Promise<() => void> {
   const unlisten = await listen<McpEventPayload>("mcp:event", (evt) => {
@@ -45,6 +71,10 @@ export async function startMcpBridge(): Promise<() => void> {
         break;
       case "progress":
         break;
+    }
+
+    if (payload.actions && payload.actions.length > 0) {
+      handleActions(payload.actions);
     }
   });
 

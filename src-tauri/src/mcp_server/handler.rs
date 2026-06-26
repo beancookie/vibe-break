@@ -20,14 +20,33 @@ pub(super) async fn handle(
     let parsed = parse_event(tool_name, tool_input);
 
     eprintln!(
-        "[vibe-break:mcp] DEBUG  → mapped: type={} meta={}",
-        parsed.event_type, parsed.meta,
+        "[vibe-break:mcp] DEBUG  → mapped: type={} actions={}",
+        parsed.event_type, parsed.actions.len(),
     );
+
+    let actions: Vec<Value> = parsed
+        .actions
+        .iter()
+        .map(|a| {
+            json!({
+                "type": a.action_type,
+                "name": a.name,
+                "url": a.url,
+                "speed": a.speed,
+                "weight": a.weight,
+                "bone": a.bone,
+                "x": a.x,
+                "y": a.y,
+                "z": a.z,
+            })
+        })
+        .collect();
 
     let payload = json!({
         "type": parsed.event_type,
         "meta": parsed.meta,
         "ts": ts,
+        "actions": actions,
     });
 
     let result = app_handle.emit("mcp:event", payload);

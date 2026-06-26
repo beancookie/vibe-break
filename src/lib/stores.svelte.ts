@@ -29,6 +29,18 @@ export interface NewsItem {
   published?: string;
 }
 
+export interface PendingExpression {
+  name: string;
+  weight: number;
+}
+
+export interface PendingBonePose {
+  bone: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
 export type AiState = "idle" | "thinking" | "done" | "error";
 
 export const appState = $state({
@@ -58,6 +70,10 @@ export const appState = $state({
     showErrorFeedback: false,
     errorMsg: "",
   } as McpUiState,
+
+  // Action commands from MCP
+  pendingExpression: null as PendingExpression | null,
+  pendingBonePose: null as PendingBonePose | null,
 });
 
 export function setVrmList(list: AssetEntry[]) {

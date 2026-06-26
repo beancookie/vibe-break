@@ -1,9 +1,22 @@
 import mitt from "mitt";
 
+export type ActionCommand = {
+  type: "play_anim" | "expression" | "bone_pose";
+  name?: string;
+  url?: string;
+  speed?: number;
+  weight?: number;
+  bone?: string;
+  x?: number;
+  y?: number;
+  z?: number;
+};
+
 export type McpEventPayload = {
   type: "thinking" | "thinking:end" | "file.write" | "command.exec" | "done" | "error" | "progress";
   meta?: Record<string, unknown>;
   ts?: number;
+  actions?: ActionCommand[];
 };
 
 export type AppEvents = {

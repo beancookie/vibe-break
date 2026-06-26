@@ -10,7 +10,7 @@
     type AnimationClip,
     type PerspectiveCamera,
   } from "three";
-  import { VRM } from "@pixiv/three-vrm";
+  import { VRM, type VRMHumanBoneName } from "@pixiv/three-vrm";
   import { loadVRM, loadVRMAClip, disposeVRM } from "$lib/three/useVrm";
   import { appState, lookTarget, setStatus, setLoading, setCameraTarget, setSelectedAnim } from "$lib/stores.svelte";
   import { STATUS } from "$lib/strings";
@@ -361,6 +361,28 @@
     if (current && lastNaturalHeight > 0) {
       resizeWindowToVRM(current, lastNaturalHeight);
     }
+  });
+
+  // ---- MCP action: expression (BlendShape) ----
+  $effect(() => {
+    const expr = appState.pendingExpression;
+    if (!expr || !current?.expressionManager) return;
+    current.expressionManager.setValue(expr.name, expr.weight);
+    current.expressionManager.update();
+    appState.pendingExpression = null;
+  });
+
+  // ---- MCP action: bone pose ----
+  $effect(() => {
+    const pose = appState.pendingBonePose;
+    if (!pose || !current?.humanoid) return;
+    const bone = current.humanoid.getNormalizedBoneNode(pose.bone as VRMHumanBoneName);
+    if (bone) {
+      bone.rotation.x = pose.x;
+      bone.rotation.y = pose.y;
+      bone.rotation.z = pose.z;
+    }
+    appState.pendingBonePose = null;
   });
 
   // ---- Per-frame update ----

@@ -1,431 +1,237 @@
-# Vibe Break — 最终集成与插件化设计文档
+# Vibe Break — 架构文档
 
-版本：1.0  
-作者：beancookie / 整理：Copilot
-
-说明（直接结论）
-
-- 目标：把 Claude Code（或其它 MCP 客户端）的事件流接入 Vibe Break，把 AI 的内部状态（thinking / file.write / command.exec / done / error / progress）实时可视化，并在“thinking”时展示摸鱼新闻（V2EX / 掘金），在达到阈值时发送鼓励、在出错时给出反馈、并在特定时间发送吃饭/下班提醒。
-- 要求：系统必须可扩展（插件化）、安全（权限控制）、性能友好（主线程轻量化、后端做网络/解析）、并提供良好的可测试/打包流程。
-- 方案概览：将应用拆为 Core + Plugin 层。Core（Tauri/Rust + Svelte）负责渲染、状态、EventBus、PluginManager、AnimationController；插件分为 Frontend 插件（热加载 TS/JS + Svelte UI）、Backend 插件（独立进程，通过 JSONL/stdio 或 socket 与 Core 通信）与混合插件。Core 提供托管 API（事件、状态、invoke、UI slot、通知、持久化），插件通过 manifest 声明权限并在用户授权后运行。
-
-我已把之前所有讨论的设计、协议、示例与实现要点整合到下面这份完整文档里，便于直接落地与后续扩展。你可以直接把它放入仓库 `docs/final_plan.md`，或让我把代码改动与示例补丁开 PR。
+版本：2.0（实际代码状态）
 
 ---
 
-目录
+## 目标
 
-1. 目标与需求摘要
-2. 高层架构
-3. 事件协议（MCP -> Vibe Break）
-4. Core 组件详解
-5. 插件系统设计（manifest、API、运行模型）
-6. 插件示例
-   - 6.1 后端新闻插件（news）
-   - 6.2 前端鼓励插件（encourage）
-7. 前端接入（appState / mcpBridge / AnimationController / UI）
-8. 权限、隐私与安全考虑
-9. 持久化与配置
-10. 测试与调试策略
-11. 打包与部署注意事项（Tauri）
-12. 迭代与实施计划（M1..M4）
-13. 附录：关键代码片段（示例实现）
+把 Claude Code（或其它 MCP 客户端）的事件流接入 Vibe Break，把 AI 的内部状态（thinking / file.write / command.exec / done / error / progress）实时可视化，并通过 `_actions` 指令控制 VRM 模型的动作（动画播放、表情 BlendShape、Bone 姿势）。
 
 ---
 
-1. 目标与需求摘要
+## 当前架构（已实现）
 
-- 实时接收并可视化 MCP 事件（thinking、file.write、command.exec、done、error、progress）。
-- 在 thinking 时展示来自 V2EX / 掘金 的短新闻轮播（后端抓取、去重、缓存）。
-- 鼓励策略：达到配置阈值（例如写文件 25 次）触发鼓励消息，带冷却（例如 45 分钟）。
-- 错误反馈：error 事件记录、UI 弹出、可一键复制或打开 Issue 模板。
-- 定时提醒：午餐提醒、下班汇总（后端定时器 + 系统通知）。
-- 一切功能应以插件形式可扩展/关闭/替换。
+```mermaid
+flowchart TD
+  A["Claude Code (MCP Client)<br/>tools: Write, Edit, Bash, Read ..."]
+  B["Rust MCP Server<br/>mod.rs — pmcp Streamable HTTP<br/>127.0.0.1:39876"]
+  C["handler.rs → parse_event()"]
+  D["event.rs<br/>Write/Edit → file.write<br/>Bash → command.exec<br/>Stop → thinking:end<br/>Others → thinking<br/>从 tool_input['_actions'] 解析指令"]
+  E["Tauri Event System<br/>app_handle.emit('mcp:event')"]
+  F["mcpBridge.svelte.ts<br/>listen('mcp:event')"]
+  G_1["更新 appState.aiState<br/>idle / thinking / done / error"]
+  G_2["更新 counters<br/>filesWritten / commandsRun / errors"]
+  G_3["处理 actions<br/>play_anim / expression / bone_pose"]
+  G_4["re‑emit 到 in‑app event bus"]
+  H["animationController.svelte.ts<br/>aiState → VRMA name<br/>thinking → Thinking<br/>done → Clapping<br/>error → Sad"]
+  I["VrmModel.svelte ($effect)"]
+  I_1["selectedAnim<br/>→ AnimationMixer<br/>→ cross‑fade play"]
+  I_2["pendingExpression<br/>→ vrm.expressionManager<br/>.setValue()"]
+  I_3["pendingBonePose<br/>→ getNormalizedBoneNode<br/>.rotation.set()"]
+  I_4["useTask per‑frame<br/>vrm.update(dt)<br/>mixer.update(dt)"]
+  J["VRM Model<br/>Three.js + Threlte"]
 
-2. 高层架构
+  A -- "call tool 'report_event' HTTP" --> B
+  B --> C
+  C --> D
+  D -- "payload: {type, meta, ts, actions}" --> E
+  E --> F
+  F --> G_1 & G_2 & G_3 & G_4
+  G_1 & G_4 --> H
+  H --> I
+  I --> I_1 & I_2 & I_3 & I_4
+  I_1 & I_2 & I_3 --> J
+```
 
-- Core（Tauri/Rust + Svelte）
-  - EventBus（跨前后端/插件的事件总线）
-  - AppState（全局响应式状态）
-  - PluginManager（发现 / 加载 / 权限 / 卸载）
-  - AnimationController（事件 -> 动画/表情/特效）
-  - UI Shell（VrmViewer、ContextMenu、Plugin 管理入口）
-- Plugins
-  - Frontend plugin（动态 import 的 JS/TS，能注册 UI slot、读取/写入 state、订阅事件）
-  - Backend plugin（独立进程，JSONL/stdio 或 socket 协议，做网络抓取、文件 IO、持久化、重度计算）
-  - Hybrid plugin（frontend + backend 协同）
-- IPC/通信
-  - Core 与前端插件：直接函数调用 / Host API
-  - Core 与后端插件：spawn 进程 + JSONL over stdio 或 socket
-  - Core 向 Svelte 前端：window.emit / tauri event listen
+## 已实现功能
 
-3. 事件协议（MCP -> Vibe Break）
+### Core 渲染
+- VRM 模型加载（两步：fetch → yield → parse）
+- VRMA 动画加载（clip 缓存、交叉淡入淡出 0.2s）
+- 四点光源、透明窗口、ACES Filmic Tone Mapping
+- 相机自动取景（head/foot 骨骼计算距离）
+- 窗口跟随缩放（滚轮缩放模型+窗口，3:4 比例锁定）
+- long-press 窗口拖拽（Tauri startDragging）
 
-- MCP 事件 JSON schema（最低字段）：
-  {
-  "type": "thinking" | "thinking:end" | "file.write" | "command.exec" | "done" | "error" | "progress",
-  "meta": { ... },
-  "ts": 168xxxxxx
-  }
-- 常用 meta 示例：
-  - file.write: { path: "src/foo.ts" }
-  - command.exec: { cmd: "pnpm build", status: "start" | "end" }
-  - error: { message: "...", stack?: "..." }
-  - progress: { percent: 0..100 }
+### MCP 集成
+- MCP HTTP 服务器（127.0.0.1:39876, Streamable HTTP）
+- 注册 `report_event` tool（接受 tool_name, tool_input, ts）
+- 事件映射（Write/Edit/Bash/Stop → file.write/command.exec/thinking:end）
+- 动作指令（`_actions` 数组）：play_anim / expression / bone_pose
+- 9 个单元测试覆盖事件解析
 
-4. Core 组件详解
+### 动画控制
+- aiState 驱动动画自动切换（Thinking / Cladding / Sad）
+- 动画 ping-pong 循环（避免 A-pose 闪回）
+- 表情 BlendShape 控制（vrm.expressionManager）
+- Bone 姿势控制（getNormalizedBoneNode）
 
-- EventBus
-  - publish(eventName, payload)
-  - subscribe(eventName, handler): returns unsubscribe
-  - 用途：插件、AnimationController、UI 等统一订阅 MCP 事件及插件事件。
-- AppState（响应式）
-  - aiState: "idle"|"thinking"|...
-  - counters: { filesWritten, commandsRun, errors }
-  - thinkingPeriods: [{start, end}]
-  - news: NewsItem[]
-  - ui: { showNews, showEncouragement, errorMsg, ... }
-  - config: plugin 与全局配置
-- PluginManager
-  - 发现（本地 plugins/ 或打包内 assets/plugins/）
-  - 加载（dynamic import frontend; spawn backend）
-  - 权限校验（manifest -> 用户确认）
-  - 插件生命周期：init(host) -> running -> onUnload()
-- AnimationController
-  - 提供 API 给前端插件与 core：playAnimation(url), playEffect(name, options), setExpression(name, value)
-  - 管理 crossfade、one-shot effects、priority
-- UI Shell
-  - 插槽（slot）设计：top-right, bottom-left, overlay, context-menu-extension
-  - 插件可向 slot 注册 UI 渲染函数（Core 在对应位置挂载 DOM）
+### UI
+- 右键/双击上下文菜单
+- 模型/动画选择器、重播/停止
+- 置顶开关、状态文本
+- 持久化（settings.json: selectedVrm, selectedAnim, petScale, alwaysOnTop）
 
-5. 插件系统设计（manifest、API、运行模型）
+---
 
-- Manifest (plugin.json) 必须声明：
-  - id, name, version, description
-  - permissions: ["network", "persist", "spawn-backend", "open-shell"]
-  - frontend: { entry: "./frontend/index.js", uiSlots: ["overlay-bottom-left"] }
-  - backend: { entry: "./backend/news_fetcher.py", protocol: "jsonl" }
-  - compat.coreVersion: ">=0.4.0"
-- PluginHost API（前端插件可用）
-  - eventBus: subscribe(), emit()
-  - state: get(), patch(), watch(selector, handler)
-  - invoke(cmd, args) -> Promise (Core 将它映射到 Tauri commands 或转发给后端 plugin)
-  - registerUI(slotId, mountEl => void) -> unregister
-  - notify(level, title, body)
-  - log(level, msg)
-  - permissions.has(name)
-- 后端插件协议（JSONL）
-  - 每行 JSON：{ type: "event"|"command"|"log", name: "...", payload: {...} }
-  - Core 发起的 command 同样 JSONL 发给后端插件，后端通过 stdout 推送事件到 Core
+## 事件协议
 
-6. 插件示例
-   6.1 News 插件（后端 + 前端）
+### MCP → Vibe Break
 
-- Backend: 周期性抓取 V2EX / 掘金 / 其它 feed，parse -> 去重 -> 缓存 -> 输出事件 news.items
-- Frontend: 订阅 news.items，state.patch({news, showNews:true})，registerUI 到 overlay-bottom-left 渲染 NewsTicker
-- 权限：network, persist
-- 缓存 TTL 建议：600s（10 分钟）
+Claude Code 调用 `report_event` tool：
 
-  6.2 Encourage 插件（前端）
-
-- 纯前端插件，订阅 file.write 事件、维护计数、触发鼓励 toast（阈值、冷却）并能调用 Core.notify() 做系统通知（需 permission）
-- 权限：notify（或者 open-shell）
-
-7. 前端接入（关键点）
-
-- mcpBridge.ts
-  - listen("mcp:event") -> 更新 appState、计数、触发 fetchNews（thinking）
-  - 负责把简单的事件翻译成 appState 操作（e.g., thinking 开始/结束）
-- stores.svelte（appState）
-  - 加入 counters、thinkingPeriods、news、ui、config
-- AnimationController / VrmModel
-  - 订阅 appState.aiState 与 appState.specialEffect
-  - 利用 existing mixer / clipCache 逻辑切换 animation（使用 currentRev / animToken 同步）
-  - 为 short-lived effects（celebrate、shake）提供 one-shot 播放入口
-- NewsTicker.svelte（UI）
-  - 轮播标题、点击打开（tauri shell.open）、可关闭 & 缓存展示状态
-
-8. 权限、隐私与安全
-
-- 插件 manifest 声明权限；首次启用弹窗请求用户授权
-- 默认关闭网络抓取类插件；需要用户主动开启
-- 抓取来的内容仅返回纯文本标题与链接，避免注入 HTML
-- 若要匿名化流量，支持“使用代理”设置
-- 后端插件运行在独立进程，作为沙箱隔离风险
-
-9. 持久化与配置
-
-- Core 提供 persist API（文件或 sqlite）供插件与 Core 保存 counters、plugin config、history
-- 每 plugin 有 namespace: plugins.<id>.\* 存储配置
-- 日终摘要、事件历史与统计可保存为 JSONL 或数据库（便于分析）
-
-10. 测试与调试策略
-
-- 单元测试
-  - Rust：news fetcher、cache、mcp listener parser
-  - TS：plugin manager、eventBus、encourage 算法
-- 集成测试
-  - 模拟 mcp_feeder.py 发送 JSONL 到 Core（stdin 模式）
-  - 启动 tauri dev，断言 appState 变化、news 界面展示、动画触发
-- E2E（可选）
-  - 用 headless + 截图断言视觉效果（需要 ui 可编程化触发）
-- 开发体验
-  - 支持 dev 模式动态加载本地 plugin（absolute path），Log 可在 Core console/日志文件查看
-
-11. 打包与部署注意事项（Tauri）
-
-- 前端插件作为静态资源打包进入 assets/plugins/（并在运行时由 PluginManager 读取）
-- 后端插件若为可执行文件，需在 tauri 打包资源中包含（tauri.conf.json 里的 bundler configs）
-- 在 Windows/macOS/Linux 打包时确认 backend 可执行的相对路径或安装目录（在 manifest 中可使用 placeholders）
-- 在打包前运行 plugin 打包脚本，把插件二进制或脚本放置到 src-tauri/resources/ 或 assets/
-
-12. 迭代与实施计划
-
-- M1（1-2 天） 最小可用：
-  - 实现 MCP stdin listener -> window.emit（Rust）
-  - 前端 mcpBridge -> appState.aiState 切换（thinking/file.write/done）
-  - 基本 AnimationController 调用 points（demo）
-- M2（1-2 天） News 插件（backend + frontend）：
-  - 后端实现 fetch_news (reqwest + feed-rs)，cache；Core spawn 后端插件或作为内置命令
-  - 前端 NewsTicker 渲染
-- M3（1-2 天） Encourage plugin + counters + persist：
-  - 在 mcpBridge 增加 counters，Encourage 插件监听并触发 toast、系统通知
-- M4（3-7 天） 完整插件化与权限：
-  - 完成 PluginManager、manifest 支持、权限请求 UI、插件管理界面
-  - 增强测试与打包支持
-- 每个里程碑：提交 PR、文档、以及示例插件
-
-13. 附录：关键代码片段（示例实现）
-    下面给出关键示例（供参考与快速上手）。这些都是参考实现，实际集成时请根据仓库风格与类型调整。
-
-- Rust: 简单 stdin MCP listener（src-tauri/src/mcp_listener.rs）
-
-```rust name=src-tauri/src/mcp_listener.rs
-use tauri::Manager;
-use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, BufReader};
-
-pub fn spawn_stdio_mcp_listener(window: tauri::Window) {
-  tauri::async_runtime::spawn(async move {
-    let stdin = tokio::io::stdin();
-    let mut reader = BufReader::new(stdin);
-    let mut line = String::new();
-    loop {
-      line.clear();
-      match reader.read_line(&mut line).await {
-        Ok(0) => break,
-        Ok(_) => {
-          if let Ok(json) = serde_json::from_str::<Value>(line.trim()) {
-            let _ = window.emit("mcp:event", json);
-          } else {
-            eprintln!("mcp parse failed: {}", line);
-          }
-        }
-        Err(e) => {
-          eprintln!("mcp read error: {:?}", e);
-          break;
-        }
-      }
-    }
-  });
+```json
+{
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "src/foo.ts",
+    "_actions": [
+      { "type": "play_anim", "name": "Clapping", "speed": 1.2 },
+      { "type": "expression", "name": "happy", "weight": 0.8 },
+      { "type": "bone_pose", "bone": "head", "x": 0.3, "y": 0, "z": 0 }
+    ]
+  },
+  "ts": 1680000000000
 }
 ```
 
-- Rust: fetch_news command（src-tauri/src/news.rs）
+### 事件类型
 
-```rust name=src-tauri/src/news.rs
-use serde::Serialize;
-use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
-use feed_rs::parser;
-use reqwest::Client;
-use lazy_static::lazy_static;
-use std::collections::HashMap;
+| tool_name | event_type | 说明 |
+|-----------|------------|------|
+| Write / Edit | `file.write` | 文件写入 |
+| Bash | `command.exec` | 命令执行 |
+| Stop | `thinking:end` | 思考结束 |
+| 其他（Read, Glob, Grep, Search...） | `thinking` | 思考中 |
+| （通过 tool_name 透传） | `done` | 任务完成 |
+| （通过 tool_name 透传） | `error` | 错误 |
+| （通过 tool_name 透传） | `progress` | 进度（当前 no-op） |
 
-#[derive(Serialize, Clone)]
-pub struct NewsItem {
-  pub title: String,
-  pub link: Option<String>,
-  pub source: String,
-  pub published: Option<String>,
-}
+### 动作指令 (`_actions`)
 
-lazy_static! {
-  static ref CACHE: Mutex<HashMap<&'static str, (Instant, Vec<NewsItem>)>> =
-    Mutex::new(HashMap::new());
-}
+| type | 字段 | 作用 |
+|------|------|------|
+| `play_anim` | `name` / `url`, `speed?` | 播放指定 VRMA 动画 |
+| `expression` | `name`, `weight` | 设置面部表情（BlendShape） |
+| `bone_pose` | `bone`, `x`, `y`, `z` | 控制骨骼旋转（Euler 角度） |
 
-const CACHE_TTL: Duration = Duration::from_secs(60 * 10);
+---
 
-async fn fetch_feed(client: &Client, url: &str, source_name: &str) -> Vec<NewsItem> {
-  let mut out = Vec::new();
-  if let Ok(resp) = client.get(url).send().await {
-    if let Ok(bytes) = resp.bytes().await {
-      if let Ok(feed) = parser::parse(&bytes[..]) {
-        for entry in feed.entries.into_iter().take(12) {
-          let title = entry.title.map(|t| t.content).unwrap_or_default();
-          let link = entry.links.first().map(|l| l.href.clone()).or(entry.id.clone());
-          let published = entry.published.map(|d| d.to_rfc3339());
-          out.push(NewsItem { title, link, source: source_name.to_string(), published });
-        }
-      }
-    }
-  }
-  out
-}
+## 核心模块
 
-#[tauri::command]
-pub async fn fetch_news() -> Result<Vec<NewsItem>, String> {
-  let mut cache = CACHE.lock().await;
-  let key = "default_feeds";
-  if let Some((t, items)) = cache.get(key) {
-    if t.elapsed() < CACHE_TTL {
-      return Ok(items.clone());
-    }
-  }
+### Rust 后端 (`src-tauri/src/`)
 
-  let client = Client::builder()
-    .user_agent("vibe-break/1.0")
-    .build()
-    .map_err(|e| format!("client build err: {}", e))?;
+| 文件 | 职责 |
+|------|------|
+| `main.rs` | 入口，调用 lib::run() |
+| `lib.rs` | Tauri Builder, asset 扫描, aspect-ratio 锁定, MCP server 启动 |
+| `mcp_server/mod.rs` | MCP HTTP server (pmcp), 注册 report_event tool |
+| `mcp_server/handler.rs` | 接收 tool call, 解析事件, emit 到前端 |
+| `mcp_server/event.rs` | 事件/动作类型定义, parse_event() 映射逻辑 |
 
-  let feeds = vec![
-    ("https://www.v2ex.com/feed.atom", "V2EX"),
-    ("https://juejin.cn/feed", "Juejin"),
-  ];
+### 前端 (`src/lib/`)
 
-  let mut all: Vec<NewsItem> = Vec::new();
-  for (url, source) in feeds {
-    let mut got = fetch_feed(&client, url, source).await;
-    all.append(&mut got);
-  }
+| 文件 | 职责 |
+|------|------|
+| `stores.svelte.ts` | 全局响应式状态（aiState, counters, actions, ...） |
+| `eventBus.svelte.ts` | 类型化事件总线（mitt） |
+| `mcpBridge.svelte.ts` | Tauri event listener → appState 更新 |
+| `animationController.svelte.ts` | aiState → VRMA name 映射 |
+| `three/useVrm.ts` | VRM/VRMA 加载管线（fetch → parse → dispose） |
+| `persisted.ts` | 设置持久化（@tauri-apps/plugin-store） |
+| `runtime.ts` | 运行时检测（isTauri, invoke, convertFileSrc） |
 
-  let mut seen = std::collections::HashSet::new();
-  let mut deduped = Vec::new();
-  for it in all.into_iter() {
-    let key_title = format!("{}::{}", it.source, it.title);
-    if seen.insert(key_title) { deduped.push(it); }
-    if deduped.len() >= 30 { break; }
-  }
+### 前端组件 (`src/components/`)
 
-  cache.insert(key, (Instant::now(), deduped.clone()));
-  Ok(deduped)
+| 文件 | 职责 |
+|------|------|
+| `Scene/VrmModel.svelte` | VRM 渲染、动画播放、表情/Bone 控制 |
+| `Scene/CameraRig.svelte` | 相机、鼠标跟踪、窗口拖拽 |
+| `Scene/OrbitControls.svelte` | 轨道控制（交互禁用，仅用阻尼） |
+| `Scene/Lighting.svelte` | 四点光源 |
+| `Scene/Scene.svelte` | 场景编排 |
+| `VrmViewer.svelte` | 顶层容器（场景 + UI） |
+| `UI/` | 上下文菜单、选择器等 |
+
+---
+
+## 未实现 / 计划中
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| **MCP UI 可视化面板** | ❌ | counters、thinkingPeriods 存在于 store 但无 UI 渲染 |
+| **news 轮播** | ❌ | store 定义了 NewsItem 但无抓取逻辑和 UI |
+| **鼓励/错误弹窗** | ❌ | mcpUi.showEncouragement / showErrorFeedback 定义了但无 UI |
+| **progress 进度条** | ❌ | 收到 progress 事件后 no-op |
+| **VRM SpringBone 物理** | ❌ | 头发、裙子等次级物理未实现 |
+| **文件选择/拖拽导入** | ❌ | 只能加载预打包模型 |
+| **设置面板** | ❌ | 无独立设置 UI |
+| **多窗口/多宠物** | ❌ | 单窗口 |
+| **done/error  tool schema** | ⚠️ | 前端处理了但 MCP tool 描述未枚举，Claude 不会自动调用 |
+| **CSP 重复 key** | ⚠️ | tauri.conf.json 中 csp 出现两次 |
+| **插件系统** | ❌ | PluginManager、manifest、权限系统均未实现 |
+
+---
+
+## 动效控制 API 设计
+
+### Rust 端
+
+```mermaid
+flowchart LR
+  RE["report_event call<br/>{tool_name, tool_input, ts}"] --> PE["parse_event()"] --> AC["提取 tool_input['_actions']<br/>→ Vec&lt;ActionCommand&gt;"] --> PY["序列化 payload<br/>{type, meta, ts, actions}"] --> EM["emit('mcp:event')"]
+```
+
+ActionCommand 定义（`event.rs`）：
+
+```rust
+pub struct ActionCommand {
+    pub action_type: String,    // "play_anim" | "expression" | "bone_pose"
+    pub name: Option<String>,   // VRMA name / expression name / bone name
+    pub url: Option<String>,    // VRMA URL（可选，替代 name）
+    pub speed: Option<f32>,     // 播放速度（仅 play_anim）
+    pub weight: Option<f32>,    // 表情权重 0-1（仅 expression）
+    pub bone: Option<String>,   // 骨骼名称（仅 bone_pose）
+    pub x: Option<f32>,         // Euler X
+    pub y: Option<f32>,         // Euler Y
+    pub z: Option<f32>,         // Euler Z
 }
 ```
 
-- Frontend: mcpBridge.ts（src/lib/mcpBridge.ts）
+### 前端消费链路
 
-```ts name=src/lib/mcpBridge.ts
-import { listen } from "@tauri-apps/api/event";
-import { appState } from "$lib/stores.svelte";
-import { fetchNews } from "$lib/news";
-
-export async function startMcpBridge() {
-  const unlisten = await listen("mcp:event", (evt) => {
-    const payload = evt.payload as any;
-    if (!payload || !payload.type) return;
-    switch (payload.type) {
-      case "thinking":
-        appState.aiState = "thinking";
-        appState.status = "AI thinking…";
-        if (!appState.thinkingStart) {
-          appState.thinkingStart = Date.now();
-          appState.thinkingPeriods.push({ start: appState.thinkingStart });
-        }
-        // fetch news in background
-        void (async () => {
-          const news = await fetchNews();
-          if (news.length > 0) {
-            appState.news = news;
-            appState.showNews = true;
-          }
-        })();
-        break;
-      case "thinking:end":
-        appState.aiState = "idle";
-        if (appState.thinkingStart) {
-          const t = appState.thinkingStart;
-          appState.thinkingStart = 0;
-          const last = appState.thinkingPeriods[appState.thinkingPeriods.length - 1];
-          if (last && !last.end) last.end = Date.now();
-        }
-        break;
-      case "file.write":
-        appState.counters.filesWritten++;
-        break;
-      case "command.exec":
-        appState.counters.commandsRun++;
-        break;
-      case "error":
-        appState.counters.errors++;
-        appState.ui.showErrorFeedback = true;
-        appState.ui.errorMsg = payload.meta?.message ?? "Unknown error";
-        break;
-      case "done":
-        appState.aiState = "done";
-        break;
-    }
-  });
-  return unlisten;
-}
-```
-
-- Frontend: NewsTicker.svelte（示例）
-
-```svelte name=src/components/NewsTicker.svelte
-<script lang="ts">
-  import { appState } from "$lib/stores.svelte";
-  import { onDestroy } from "svelte";
-  import { open } from "@tauri-apps/api/shell";
-
-  let interval: ReturnType<typeof setInterval> | null = null;
-
-  $: news = appState.news ?? [];
-  $: idx = appState.newsIndex ?? 0;
-
-  function startRotate() {
-    if (interval) return;
-    interval = setInterval(() => {
-      if (!appState.showNews) return;
-      appState.newsIndex = (appState.newsIndex + 1) % Math.max(1, (appState.news?.length ?? 1));
-    }, 4000);
-  }
-  function stopRotate() {
-    if (interval) { clearInterval(interval); interval = null; }
-  }
-
-  $: if (appState.showNews && news.length > 0) startRotate(); else stopRotate();
-
-  onDestroy(() => stopRotate());
-
-  function openItem(item) { if (item?.link) void open(item.link); }
-</script>
-
-{#if appState.showNews && news.length > 0}
-  <div class="news-overlay" on:click={() => appState.showNews = false}>
-    <div class="chip">
-      <strong class="src">{appState.news[appState.newsIndex].source}</strong>
-      <button class="close" on:click={(e)=>{ e.stopPropagation(); appState.showNews=false; }}>✕</button>
-    </div>
-    <div class="headline" on:click={() => openItem(appState.news[appState.newsIndex])}>
-      {appState.news[appState.newsIndex].title}
-    </div>
-  </div>
-{/if}
-
-<style>
-/* 样式略 — 同上文示例 */
-</style>
+```mermaid
+flowchart LR
+  PA["play_anim"] --> SA["appState.selectedAnim"] --> VM1["VrmModel $effect"] --> MX["mixer.clipAction"] --> CF["cross‑fade play"]
+  EX["expression"] --> PE["appState.pendingExpression"] --> VM2["VrmModel $effect"] --> EM["vrm.expressionManager<br/>.setValue()"]
+  BP["bone_pose"] --> PBP["appState.pendingBonePose"] --> VM3["VrmModel $effect"] --> BR["bone.rotation<br/>.set(x, y, z)"]
 ```
 
 ---
 
-结语与下一步（我已完成的事与可继续行动）
+## 迭代计划
 
-- 我已把之前讨论的所有要点、协议、插件化设计、示例实现与迭代计划整合成这份最终文档。
-- 下一步我可以按你的选择继续：
-  1. 直接实现 M1（在 src-tauri 添加 mcp listener 并在前端接收事件），并提交 PR。
-  2. 实现 M2（news 插件，后端抓取 + 前端展示），并提交 PR。
-  3. 把本文件保存到仓库 docs/final_plan.md（我可以创建一个分支并提交变更）。
+### M1（✅ 已完成）— 最小可用
+- [x] MCP HTTP server (pmcp) + report_event tool
+- [x] 前端 mcpBridge 接收事件 → appState.aiState
+- [x] 基本 AnimationController（thinking/done/error → VRMA）
+- [x] 文件清理（移除 file_path/command 元数据提取）
+- [x] 动作指令支持（play_anim / expression / bone_pose）
 
-告诉我你想让我现在做哪一步（或都做），我会立即开始并在当前分支上提交补丁 / PR。
+### M2 — MCP UI 可视化
+- [ ] 显示 aiState、counters（filesWritten, commandsRun, errors）
+- [ ] thinking period 计时器显示
+- [ ] error 反馈弹出（带错误信息）
+- [ ] progress 进度条
+
+### M3 — News + 鼓励
+- [ ] NewsItem 抓取（V2EX / 掘金 RSS）
+- [ ] NewsTicker 轮播 UI
+- [ ] 鼓励触发逻辑（写入/命令计数阈值）
+
+### M4 — 插件化
+- [ ] PluginManager 框架
+- [ ] manifest 声明 + 权限系统
+- [ ] 动态加载前端/后端插件
+- [ ] 插件管理 UI
