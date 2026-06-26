@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { appState } from "$lib/stores.svelte";
 import { emit, type McpEventPayload, type ActionCommand } from "$lib/eventBus.svelte";
+import { logger } from "$lib/logger";
 
 function handleActions(actions: ActionCommand[]) {
   for (const action of actions) {
@@ -35,6 +36,7 @@ export async function startMcpBridge(): Promise<() => void> {
 
     const type = payload.type;
 
+    logger.info("[MCP]", "event received", { type: payload.type, actions: payload.actions });
     emit("mcp:event", payload);
 
     switch (type) {
@@ -53,23 +55,23 @@ export async function startMcpBridge(): Promise<() => void> {
           appState.thinkingStart = 0;
         }
         break;
-      case "file.write":
+      case "trigger:write":
         appState.counters.filesWritten++;
         break;
-      case "command.exec":
+      case "trigger:exec":
         appState.counters.commandsRun++;
         break;
-      case "error":
+      case "system:error":
         appState.counters.errors++;
         appState.aiState = "error";
         appState.mcpUi.showErrorFeedback = true;
         const meta = payload.meta as Record<string, unknown> | undefined;
         appState.mcpUi.errorMsg = typeof meta?.message === "string" ? meta.message : "Unknown error";
         break;
-      case "done":
+      case "system:done":
         appState.aiState = "done";
         break;
-      case "progress":
+      case "system:progress":
         break;
     }
 

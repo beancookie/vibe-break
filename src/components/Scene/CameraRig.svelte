@@ -9,6 +9,7 @@
   import OrbitControls from "./OrbitControls.svelte";
   import { appState, lookTarget } from "$lib/stores.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { logger } from "$lib/logger";
 
   const { renderer, camera } = useThrelte();
 
@@ -68,7 +69,7 @@
     try {
       await getCurrentWindow().startDragging();
     } catch (err) {
-      console.warn("startDragging failed", err);
+      logger.warn("[UI]", "startDragging failed", err);
     }
   }
 

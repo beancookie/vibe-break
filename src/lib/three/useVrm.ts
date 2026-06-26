@@ -7,6 +7,7 @@ import {
 } from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
 import { assetUrl } from "./assetUrl";
+import { logger } from "$lib/logger";
 
 // Singleton GLTFLoaders so we don't re-instantiate per load.
 let vrmLoader: GLTFLoader | null = null;
@@ -122,7 +123,7 @@ export function disposeVRM(vrm: VRM | null | undefined): void {
     try {
       VRMUtils.deepDispose(scene);
     } catch (err) {
-      console.warn("disposeVRM failed:", err);
+      logger.warn("[VRM]", "disposeVRM failed", err);
     }
   }, 0);
 }

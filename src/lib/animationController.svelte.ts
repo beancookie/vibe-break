@@ -15,9 +15,9 @@ export function startAnimationController() {
       switchAnimation("thinking");
     } else if (payload.type === "thinking:end") {
       switchAnimation("idle");
-    } else if (payload.type === "done") {
+    } else if (payload.type === "system:done") {
       switchAnimation("done");
-    } else if (payload.type === "error") {
+    } else if (payload.type === "system:error") {
       switchAnimation("error");
     }
   });

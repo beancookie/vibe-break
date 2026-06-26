@@ -15,6 +15,7 @@
     "core:window:allow-is-always-on-top",
     "core:path:default",
     "core:path:allow-resolve-directory",
+    "core:event:default",
     "store:default"
   ]
 }

@@ -15,6 +15,7 @@
   import { appState, lookTarget, setStatus, setLoading, setCameraTarget, setSelectedAnim } from "$lib/stores.svelte";
   import { STATUS } from "$lib/strings";
   import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+  import { logger } from "$lib/logger";
 
   const { scene, camera } = useThrelte();
 
@@ -175,7 +176,7 @@
 
     getCurrentWindow()
       .setSize(new LogicalSize(w, h))
-      .catch((err: unknown) => console.warn("setSize failed", err));
+      .catch((err: unknown) => logger.warn("[VRM]", "setSize failed", err));
   }
 
   async function startLoad(idx: number) {
@@ -330,7 +331,7 @@
         if (myAnimToken !== animToken) return;
         const msg = e instanceof Error ? e.message : String(e);
         setStatus(STATUS.ANIM_ERROR(msg));
-        console.error(e);
+        logger.error("[VRM]", "animation load failed", e);
       });
   });
 

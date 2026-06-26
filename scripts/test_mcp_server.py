@@ -124,8 +124,7 @@ class TestToolCall:
         "tool_name",
         [
             pytest.param("Write", id="write"),
-            pytest.param("Edit", id="edit"),
-            pytest.param("Bash", id="bash"),
+            pytest.param("Exec", id="exec"),
             pytest.param("Stop", id="stop"),
             pytest.param("Read", id="read"),
             pytest.param("UnknownTool", id="unknown"),
@@ -157,7 +156,7 @@ class TestToolCall:
 
 
 # =========================================================================
-# Actions (_actions)
+# Actions
 # =========================================================================
 
 
@@ -169,8 +168,8 @@ class TestActions:
             "arguments": {
                 "tool_name": "Write",
                 "tool_input": {
-                    "_actions": [
-                        {"type": "play_anim", "name": "Clapping", "speed": 1.2}
+                    "actions": [
+                        {"type": "play_anim", "name": "Clapping"}
                     ]
                 },
                 "ts": 1000,
@@ -186,7 +185,7 @@ class TestActions:
             "arguments": {
                 "tool_name": "Read",
                 "tool_input": {
-                    "_actions": [
+                    "actions": [
                         {"type": "play_anim", "name": "Sleepy"},
                         {"type": "expression", "name": "happy", "weight": 0.8},
                         {"type": "bone_pose", "bone": "head", "x": 0.3, "y": 0.0, "z": 0.0},
@@ -201,9 +200,9 @@ class TestActions:
     def test_actions_empty_or_omitted(self):
         _initialize()
         for args in [
-            {"tool_name": "Write", "tool_input": {"_actions": []}},
+            {"tool_name": "Write", "tool_input": {"actions": []}},
             {"tool_name": "Write"},
-            {"tool_name": "Edit", "tool_input": {"_actions": "not an array"}},
+            {"tool_name": "Exec", "tool_input": {"actions": "not an array"}},
         ]:
             params = {"name": "report_event", "arguments": args}
             result = _get_result(_mcp("tools/call", params).json())

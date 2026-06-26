@@ -44,7 +44,6 @@ pub(super) async fn handle(
                 "type": a.action_type,
                 "name": a.name,
                 "url": a.url,
-                "speed": a.speed,
                 "weight": a.weight,
                 "bone": a.bone,
                 "x": a.x,

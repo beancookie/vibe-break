@@ -6,7 +6,6 @@ pub struct ActionCommand {
     pub action_type: String,
     pub name: Option<String>,
     pub url: Option<String>,
-    pub speed: Option<f32>,
     pub weight: Option<f32>,
     pub bone: Option<String>,
     pub x: Option<f32>,
@@ -22,18 +21,19 @@ pub struct ParsedEvent {
 
 pub fn parse_event(tool_name: &str, tool_input: Option<&Value>) -> ParsedEvent {
     let event_type = match tool_name {
-        "Write" | "Edit" => "file.write",
-        "Bash" => "command.exec",
+        "Write" => "trigger:write",
+        "Exec" => "trigger:exec",
+        "Read" => "trigger:read",
         "Stop" => "thinking:end",
         _ => "thinking",
     };
 
     let actions = tool_input
-        .and_then(|input| input.get("_actions"))
+        .and_then(|input| input.get("actions"))
         .and_then(|v| serde_json::from_value::<Vec<ActionCommand>>(v.clone()).ok())
         .unwrap_or_default();
 
-    ParsedEvent { event_type, meta: json!({}), actions }
+    ParsedEvent { event_type, meta: json!({"tool_name": tool_name}), actions }
 }
 
 #[cfg(test)]
@@ -41,25 +41,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_file_write() {
+    fn test_parse_write() {
         let input = json!({"file_path": "src/foo.ts"});
         let event = parse_event("Write", Some(&input));
-        assert_eq!(event.event_type, "file.write");
+        assert_eq!(event.event_type, "trigger:write");
         assert!(event.actions.is_empty());
     }
 
     #[test]
-    fn test_parse_edit() {
-        let input = json!({"file_path": "src/bar.ts"});
-        let event = parse_event("Edit", Some(&input));
-        assert_eq!(event.event_type, "file.write");
-    }
-
-    #[test]
-    fn test_parse_bash() {
+    fn test_parse_exec() {
         let input = json!({"command": "pnpm build"});
-        let event = parse_event("Bash", Some(&input));
-        assert_eq!(event.event_type, "command.exec");
+        let event = parse_event("Exec", Some(&input));
+        assert_eq!(event.event_type, "trigger:exec");
     }
 
     #[test]
@@ -69,9 +62,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_read_defaults_to_thinking() {
+    fn test_parse_read() {
         let event = parse_event("Read", None);
-        assert_eq!(event.event_type, "thinking");
+        assert_eq!(event.event_type, "trigger:read");
     }
 
     #[test]
@@ -83,8 +76,8 @@ mod tests {
     #[test]
     fn test_parse_actions() {
         let input = json!({
-            "_actions": [
-                {"type": "play_anim", "name": "Clapping", "speed": 1.2},
+            "actions": [
+                {"type": "play_anim", "name": "Clapping"},
                 {"type": "expression", "name": "happy", "weight": 0.8},
                 {"type": "bone_pose", "bone": "head", "x": 0.3, "y": 0.0, "z": 0.0}
             ]
@@ -107,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_parse_actions_invalid_type() {
-        let input = json!({"_actions": "not an array"});
+        let input = json!({"actions": "not an array"});
         let event = parse_event("Read", Some(&input));
         assert!(event.actions.is_empty());
     }

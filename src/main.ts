@@ -6,6 +6,7 @@ import { isTauri } from "$lib/runtime";
 import { STATUS, ERROR } from "$lib/strings";
 import { appState, setVrmList, setAnimList, setScanning, setStatus, setSelectedVrm, setSelectedAnim, setPetScale } from "$lib/stores.svelte";
 import { loadPersistedState } from "$lib/persisted";
+import { logger } from "$lib/logger";
 
 const target = document.getElementById("app") as HTMLDivElement | null;
 if (!target) {
@@ -24,7 +25,7 @@ async function restorePersisted(): Promise<void> {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       await getCurrentWindow().setAlwaysOnTop(true);
-    } catch (e) { console.warn("restore alwaysOnTop failed", e); }
+    } catch (e) { logger.warn("[Init]", "restore alwaysOnTop failed", e); }
   }
 }
 
@@ -67,7 +68,7 @@ async function init(): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setStatus(`${STATUS.SCAN_FAILED} ${msg}`);
-      console.error(err);
+      logger.error("[Init]", "scanAssets failed", err);
     } finally {
       setScanning(false);
     }
@@ -82,6 +83,6 @@ async function init(): Promise<void> {
   }
 }
 
-init().catch(console.error);
+init().catch((err) => logger.error("[Init]", "init failed", err));
 
 export default app;

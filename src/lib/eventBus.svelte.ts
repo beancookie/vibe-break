@@ -4,7 +4,6 @@ export type ActionCommand = {
   type: "play_anim" | "expression" | "bone_pose";
   name?: string;
   url?: string;
-  speed?: number;
   weight?: number;
   bone?: string;
   x?: number;
@@ -13,7 +12,7 @@ export type ActionCommand = {
 };
 
 export type McpEventPayload = {
-  type: "thinking" | "thinking:end" | "file.write" | "command.exec" | "done" | "error" | "progress";
+  type: "thinking" | "thinking:end" | "trigger:write" | "trigger:exec" | "trigger:read" | "system:done" | "system:error" | "system:progress" | "trigger:url";
   meta?: Record<string, unknown>;
   ts?: number;
   actions?: ActionCommand[];

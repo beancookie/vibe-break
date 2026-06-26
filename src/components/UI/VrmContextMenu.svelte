@@ -6,6 +6,7 @@
   import Button from "$lib/components/ui/button.svelte";
   import Separator from "$lib/components/ui/separator.svelte";
   import Label from "$lib/components/ui/label.svelte";
+  import { logger } from "$lib/logger";
 
   // Menu state. Position is fixed (top-right corner of the window),
   // so we don't track x/y here - the CSS handles it.
@@ -22,7 +23,7 @@
     try {
       pinned = await getCurrentWindow().isAlwaysOnTop();
     } catch (e) {
-      console.warn("isAlwaysOnTop check failed", e);
+      logger.warn("[UI]", "isAlwaysOnTop check failed", e);
       pinned = false;
     }
     open = true;
