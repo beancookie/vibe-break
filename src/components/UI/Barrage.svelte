@@ -3,13 +3,15 @@
   import { isTauri } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { appState, recycleNews, MAX_NEWS } from "$lib/stores.svelte";
-  import { seedDevData } from "$lib/devMock";
+  import { seedMockNews, seedMockEncourage } from "$lib/devMock";
   import BarrageItem from "./BarrageItem.svelte";
 
-  const MAX_BARRAGE = 3;
+  const MAX_BARRAGE = 20;
+  const TRACK_COUNT = 10;
 
   let idCounter = 0;
   let blocked = $state(new Set<string>());
+  let activeTracks = $state(new Set<number>());
 
   async function blockItem(text: string, link: string) {
     if (link && isTauri()) {
@@ -27,16 +29,28 @@
     id: number;
     text: string;
     link: string;
+    track: number;
   }
 
   let items: Item[] = $state([]);
 
   function removeItem(text: string, link: string) {
+    const removed = items.find((i) => i.text === text);
+    if (removed) activeTracks.delete(removed.track);
     items = items.filter((i) => i.text !== text);
     if (!blocked.has(text)) {
       recycleNews(text, link);
     }
     fillSlots();
+  }
+
+  function pickTrack(): number {
+    if (activeTracks.size < TRACK_COUNT) {
+      for (let t = 0; t < TRACK_COUNT; t++) {
+        if (!activeTracks.has(t)) return t;
+      }
+    }
+    return Math.floor(Math.random() * TRACK_COUNT);
   }
 
   function fillSlots() {
@@ -49,13 +63,16 @@
         continue;
       }
       if (items.some((i) => i.text === text)) break;
-      items = [...items, { id: ++idCounter, text, link: first.link }];
+      const track = pickTrack();
+      if (activeTracks.size < TRACK_COUNT) activeTracks.add(track);
+      items = [...items, { id: ++idCounter, text, link: first.link, track }];
       appState.news = appState.news.slice(1);
     }
   }
 
   onMount(() => {
-    seedDevData();
+    seedMockNews();
+    seedMockEncourage();
   });
 
   $effect(() => {
@@ -69,6 +86,7 @@
   <BarrageItem
     text={item.text}
     link={item.link}
+    track={item.track}
     onexpired={(text) => removeItem(text, item.link)}
     onblock={(text) => blockItem(text, item.link)}
   />

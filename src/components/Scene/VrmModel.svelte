@@ -353,6 +353,14 @@
     }
   });
 
+  // ---- Mouth movement (speaking / typing animation) ----
+  $effect(() => {
+    const w = appState.mouthWeight;
+    if (!current?.expressionManager) return;
+    current.expressionManager.setValue("aa", w);
+    current.expressionManager.update();
+  });
+
   // ---- MCP action: expression (BlendShape) ----
   $effect(() => {
     const expr = appState.pendingExpression;

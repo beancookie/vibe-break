@@ -1,18 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
   import { appState } from "$lib/stores.svelte";
 
-  const TYPING_INTERVAL_MS = 60;
+  const SPEECH_DURATION_PER_CHAR_MS = 100;
   const HOLD_DURATION_MS = 5000;
-  const MOCK_INTERVAL_MS = 15_000;
-
-  const ENCOURAGE_MESSAGES: string[] = [
-    "写得不错，继续加油 💪",
-    "今天你也闪闪发光 ✨",
-    "专注的姿势很迷人 🎯",
-    "代码会记住你的努力 🚀",
-    "休息是为了走更远的路 🌿",
-  ];
 
   let visible = $state(false);
   let fadingOut = $state(false);
@@ -22,12 +12,14 @@
 
   let typingTimer: ReturnType<typeof setInterval> | null = null;
   let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+  let typingStartTime = $state(0);
 
   function resetTimers() {
     if (typingTimer !== null) clearInterval(typingTimer);
     typingTimer = null;
     if (dismissTimer !== null) clearTimeout(dismissTimer);
     dismissTimer = null;
+    appState.mouthWeight = 0;
   }
 
   function startTyping(msg: string) {
@@ -37,15 +29,25 @@
     isTyping = true;
     fadingOut = false;
     visible = true;
+    typingStartTime = Date.now();
+
+    const totalDuration = msg.length * SPEECH_DURATION_PER_CHAR_MS;
+    const totalSec = totalDuration / 1000;
+    const charInterval = totalDuration / msg.length;
 
     let i = 0;
     typingTimer = setInterval(() => {
       i++;
       typewriterText = msg.slice(0, i);
+
+      const elapsed = (Date.now() - typingStartTime) / 1000;
+      appState.mouthWeight = Math.sin((elapsed / totalSec) * Math.PI * msg.length) * 0.35 + 0.35;
+
       if (i >= msg.length) {
         if (typingTimer !== null) clearInterval(typingTimer);
         typingTimer = null;
         isTyping = false;
+        appState.mouthWeight = 0;
         dismissTimer = setTimeout(() => {
           fadingOut = true;
           setTimeout(() => {
@@ -54,7 +56,7 @@
           }, 300);
         }, HOLD_DURATION_MS);
       }
-    }, TYPING_INTERVAL_MS);
+    }, charInterval);
   }
 
   $effect(() => {
@@ -64,21 +66,7 @@
     }
   });
 
-  let mockTimer: ReturnType<typeof setInterval> | null = null;
 
-  onMount(() => {
-    if (!import.meta.env.VITE_SEED_ENCOURAGE) return;
-    mockTimer = setInterval(() => {
-      if (appState.mcpUi.encourageMessage) return;
-      appState.mcpUi.encourageMessage =
-        ENCOURAGE_MESSAGES[Math.floor(Math.random() * ENCOURAGE_MESSAGES.length)];
-    }, MOCK_INTERVAL_MS);
-  });
-
-  onDestroy(() => {
-    if (mockTimer !== null) clearInterval(mockTimer);
-    mockTimer = null;
-  });
 </script>
 
 {#if visible}
@@ -98,7 +86,9 @@
     z-index: 20;
     max-width: 260px;
     padding: 16px 24px;
-    background: linear-gradient(135deg, #ffffff 0%, #f0f8ff 100%);
+    background: linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(240,248,255,0.85) 100%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     border-radius: 28px 44px 36px 36px;
     color: #4a6a7a;
     font-size: 15px;

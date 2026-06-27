@@ -1,18 +1,22 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  let { text, link, onexpired, onblock }: {
+  let { text, link, track, onexpired, onblock }: {
     text: string;
     link?: string;
+    track: number;
     onexpired: (text: string) => void;
     onblock: (text: string, link?: string) => void;
   } = $props();
 
-  const y = 15 + Math.random() * 65;
+  const TRACK_COUNT = 10;
+  const y = 3 + track * (72 / TRACK_COUNT);
+  const delay = track * 1.5;
+  const duration = 7 + Math.random() * 4;
   let paused = $state(false);
   let timer: ReturnType<typeof setTimeout>;
 
-  const DURATION_MS = 9000;
+  const DURATION_MS = (duration + delay) * 1000;
 
   onMount(() => {
     timer = setTimeout(() => onexpired(text), DURATION_MS);
@@ -24,7 +28,7 @@
 
 <div
   class="barrage-item"
-  style="top: {y}%; animation-play-state: {paused ? 'paused' : 'running'}"
+  style="top: {y}%; animation-delay: {delay}s; animation-duration: {duration}s; animation-play-state: {paused ? 'paused' : 'running'}"
   role="button"
   tabindex="0"
   onclick={() => onblock(text, link)}
@@ -48,7 +52,10 @@
     line-height: 1.4;
     user-select: none;
     pointer-events: auto;
-    animation: barrage-item-fly 9s linear forwards;
+    transform: translateX(100vw);
+    animation-name: barrage-item-fly;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
   }
   .barrage-item:hover {
     background: rgba(0, 0, 0, 0.7);

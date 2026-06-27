@@ -73,6 +73,9 @@ export const appState = $state({
     encourageMessage: "",
   } as McpUiState,
 
+  // Mouth / speaking animation
+  mouthWeight: 0 as number,
+
   // Action commands from MCP
   pendingExpression: null as PendingExpression | null,
   pendingBonePose: null as PendingBonePose | null,
