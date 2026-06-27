@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
-    "tauri:dev": "node scripts/sync-assets.cjs && pnpm tauri dev",
+    "tauri:dev": "pnpm tauri dev",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint src",
     "test": "vitest run",
