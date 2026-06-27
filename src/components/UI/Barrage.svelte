@@ -1,68 +1,75 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { appState } from "$lib/stores.svelte";
+  import { isTauri } from "@tauri-apps/api/core";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { appState, recycleNews, MAX_NEWS } from "$lib/stores.svelte";
   import { seedDevData } from "$lib/devSeed";
   import BarrageItem from "./BarrageItem.svelte";
 
   const MAX_BARRAGE = 3;
-  const TICK_MS = 5000;
+
+  let idCounter = 0;
+  let blocked = $state(new Set<string>());
+
+  async function blockItem(text: string, link: string) {
+    if (link && isTauri()) {
+      await openUrl(link);
+    }
+    blocked.add(text);
+    if (blocked.size > MAX_NEWS) {
+      const first = blocked.values().next().value;
+      if (first) blocked.delete(first);
+    }
+    removeItem(text);
+  }
 
   interface Item {
     id: number;
     text: string;
-    link?: string;
+    link: string;
   }
 
   let items: Item[] = $state([]);
-  let nextId = 0;
-  let timer: ReturnType<typeof setInterval> | null = null;
 
-  function removeItem(id: number, text: string) {
-    items = items.filter((i) => i.id !== id);
-    clickedTexts.add(text);
-    const i = appState.news.findIndex((n) => "[" + n.source + "] " + n.title === text);
-    if (i !== -1) {
-      appState.news.splice(i, 1);
-      if (appState.news.length === 0) {
-        appState.newsIndex = 0;
-      } else if (i <= appState.newsIndex) {
-        appState.newsIndex = Math.max(0, appState.newsIndex - 1);
+  function removeItem(text: string) {
+    items = items.filter((i) => i.text !== text);
+    if (!blocked.has(text)) {
+      recycleNews(text);
+    }
+    fillSlots();
+  }
+
+  function fillSlots() {
+    while (items.length < MAX_BARRAGE && appState.news.length > 0) {
+      const first = appState.news[0];
+      if (!first) break;
+      const text = "[" + first.source + "] " + first.title;
+      if (blocked.has(text)) {
+        appState.news = appState.news.slice(1);
+        continue;
       }
+      if (items.some((i) => i.text === text)) break;
+      items = [...items, { id: ++idCounter, text, link: first.link }];
+      appState.news = appState.news.slice(1);
     }
   }
 
   onMount(() => {
     seedDevData();
-
-    timer = setInterval(() => {
-      if (appState.news.length > 0) {
-        appState.newsIndex = (appState.newsIndex + 1) % appState.news.length;
-      }
-    }, TICK_MS);
-
-    return () => {
-      if (timer !== null) clearInterval(timer);
-    };
   });
 
-  let clickedTexts = new Set<string>();
-
   $effect(() => {
-    const news = appState.news;
-    const idx = appState.newsIndex;
-    if (news.length === 0) return;
-    const item = news[idx];
-    if (!item) return;
-
-    const text = "[" + item.source + "] " + item.title;
-    if (clickedTexts.has(text)) return;
-    if (items.length >= MAX_BARRAGE) return;
-    if (items.length > 0 && items[items.length - 1].text === text) return;
-
-    items = [...items, { id: nextId++, text, link: item.link }];
+    appState.news;
+    items;
+    fillSlots();
   });
 </script>
 
 {#each items as item (item.id)}
-  <BarrageItem text={item.text} link={item.link} onclose={() => removeItem(item.id, item.text)} />
+  <BarrageItem
+    text={item.text}
+    link={item.link}
+    onexpired={(text) => removeItem(text)}
+    onblock={(text) => blockItem(text, item.link)}
+  />
 {/each}

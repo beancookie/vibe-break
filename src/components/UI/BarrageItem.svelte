@@ -1,19 +1,25 @@
 <script lang="ts">
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { onMount } from "svelte";
 
-  let { text, link, onclose }: {
+  let { text, link, onexpired, onblock }: {
     text: string;
     link?: string;
-    onclose: () => void;
+    onexpired: (text: string) => void;
+    onblock: (text: string, link?: string) => void;
   } = $props();
 
   const y = 15 + Math.random() * 65;
   let paused = $state(false);
+  let timer: ReturnType<typeof setTimeout>;
 
-  function handleClick() {
-    onclose();
-    if (link) openUrl(link).catch(() => window.open(link, "_blank"));
-  }
+  const DURATION_MS = 9000;
+
+  onMount(() => {
+    timer = setTimeout(() => onexpired(text), DURATION_MS);
+    return () => clearTimeout(timer);
+  });
+
+
 </script>
 
 <div
@@ -21,11 +27,10 @@
   style="top: {y}%; animation-play-state: {paused ? 'paused' : 'running'}"
   role="button"
   tabindex="0"
-  onclick={handleClick}
-  onkeydown={(e) => { if (e.key === "Enter") handleClick(); }}
+  onclick={() => onblock(text, link)}
+  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onblock(text, link); } }}
   onmouseenter={() => { paused = true; }}
   onmouseleave={() => { paused = false; }}
-  onanimationend={onclose}
 >
   {text}
 </div>
@@ -41,7 +46,6 @@
     color: rgba(255, 255, 255, 0.9);
     font-size: 13px;
     line-height: 1.4;
-    cursor: pointer;
     user-select: none;
     pointer-events: auto;
     animation: barrage-item-fly 9s linear forwards;

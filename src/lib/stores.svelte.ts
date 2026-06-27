@@ -1,4 +1,5 @@
 import { STATUS } from "$lib/strings";
+import { devLog } from "$lib/devLog";
 
 export interface AssetEntry {
   name: string;
@@ -63,7 +64,6 @@ export const appState = $state({
   thinkingPeriods: [] as ThinkingPeriod[],
   thinkingStart: 0,
   news: [] as NewsItem[],
-  newsIndex: 0,
   showNews: false,
   mcpUi: {
     showNews: false,
@@ -106,6 +106,43 @@ export function setCameraTarget(t: [number, number, number]) {
 }
 export function bumpStopToken() {
   appState.stopToken++;
+}
+
+export const MAX_NEWS = 50;
+
+export function pushNews(item: NewsItem) {
+  if (appState.news.some((n) => n.title === item.title)) return;
+  devLog("stores", "pushNews", item.title);
+  appState.news = [...appState.news, item];
+  if (appState.news.length > MAX_NEWS) {
+    const removed = appState.news.length - MAX_NEWS;
+    appState.news = appState.news.slice(removed);
+  }
+}
+
+export function removeNews(text: string) {
+  const i = appState.news.findIndex(
+    (n) => "[" + n.source + "] " + n.title === text
+  );
+  if (i === -1) return;
+  appState.news = [...appState.news.slice(0, i), ...appState.news.slice(i + 1)];
+  devLog("stores", "removeNews", text, "remaining:", appState.news.length);
+}
+
+export function recycleNews(text: string) {
+  const i = appState.news.findIndex(
+    (n) => "[" + n.source + "] " + n.title === text
+  );
+  if (i !== -1) {
+    const item = appState.news[i];
+    appState.news = [...appState.news.slice(0, i), ...appState.news.slice(i + 1), item];
+    devLog("stores", "recycleNews", text);
+    return;
+  }
+  const match = text.match(/^\[(.+?)\]\s(.+)$/);
+  if (!match) return;
+  appState.news = [...appState.news, { source: match[1], title: match[2] }];
+  devLog("stores", "recycleNews (rebuilt)", text);
 }
 
 
