@@ -31,10 +31,10 @@
 
   let items: Item[] = $state([]);
 
-  function removeItem(text: string) {
+  function removeItem(text: string, link: string) {
     items = items.filter((i) => i.text !== text);
     if (!blocked.has(text)) {
-      recycleNews(text);
+      recycleNews(text, link);
     }
     fillSlots();
   }
@@ -69,7 +69,7 @@
   <BarrageItem
     text={item.text}
     link={item.link}
-    onexpired={(text) => removeItem(text)}
+    onexpired={(text) => removeItem(text, item.link)}
     onblock={(text) => blockItem(text, item.link)}
   />
 {/each}

@@ -129,7 +129,7 @@ export function removeNews(text: string) {
   devLog("stores", "removeNews", text, "remaining:", appState.news.length);
 }
 
-export function recycleNews(text: string) {
+export function recycleNews(text: string, link?: string) {
   const i = appState.news.findIndex(
     (n) => "[" + n.source + "] " + n.title === text
   );
@@ -141,7 +141,7 @@ export function recycleNews(text: string) {
   }
   const match = text.match(/^\[(.+?)\]\s(.+)$/);
   if (!match) return;
-  appState.news = [...appState.news, { source: match[1], title: match[2] }];
+  appState.news = [...appState.news, { source: match[1], title: match[2], link }];
   devLog("stores", "recycleNews (rebuilt)", text);
 }
 
