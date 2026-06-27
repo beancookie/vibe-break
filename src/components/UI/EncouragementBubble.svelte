@@ -1,8 +1,18 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import { appState } from "$lib/stores.svelte";
 
   const TYPING_INTERVAL_MS = 60;
   const HOLD_DURATION_MS = 5000;
+  const MOCK_INTERVAL_MS = 15_000;
+
+  const ENCOURAGE_MESSAGES: string[] = [
+    "写得不错，继续加油 💪",
+    "今天你也闪闪发光 ✨",
+    "专注的姿势很迷人 🎯",
+    "代码会记住你的努力 🚀",
+    "休息是为了走更远的路 🌿",
+  ];
 
   let visible = $state(false);
   let fadingOut = $state(false);
@@ -52,6 +62,22 @@
     if (msg) {
       startTyping(msg);
     }
+  });
+
+  let mockTimer: ReturnType<typeof setInterval> | null = null;
+
+  onMount(() => {
+    if (!import.meta.env.VITE_SEED_ENCOURAGE) return;
+    mockTimer = setInterval(() => {
+      if (appState.mcpUi.encourageMessage) return;
+      appState.mcpUi.encourageMessage =
+        ENCOURAGE_MESSAGES[Math.floor(Math.random() * ENCOURAGE_MESSAGES.length)];
+    }, MOCK_INTERVAL_MS);
+  });
+
+  onDestroy(() => {
+    if (mockTimer !== null) clearInterval(mockTimer);
+    mockTimer = null;
   });
 </script>
 
