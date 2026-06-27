@@ -65,8 +65,6 @@
       startTyping(msg);
     }
   });
-
-
 </script>
 
 {#if visible}
@@ -82,11 +80,15 @@
   .bubble {
     position: fixed;
     top: 4%;
-    right: 48px;
+    right: 24px;
     z-index: 20;
     max-width: 260px;
     padding: 16px 24px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(240,248,255,0.85) 100%);
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.8) 0%,
+      rgba(240, 248, 255, 0.8) 100%
+    );
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     border-radius: 28px 44px 36px 36px;
@@ -98,7 +100,9 @@
     pointer-events: none;
     user-select: none;
     animation: bubble-float 0.4s ease-out forwards;
-    transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+    transition:
+      opacity 0.3s ease-in,
+      transform 0.3s ease-in;
   }
   .bubble.fadingOut {
     opacity: 0;
