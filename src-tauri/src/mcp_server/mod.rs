@@ -32,7 +32,7 @@ pub fn start(app_handle: tauri::AppHandle) {
                 },
                 "tool_input": {
                     "type": "object",
-                    "description": "Input arguments passed to the tool. Optionally include an \"actions\" array to control the VRM avatar: [{\"type\":\"play_anim\",\"name\":\"Clapping\"}, {\"type\":\"expression\",\"name\":\"happy\",\"weight\":0.8}, {\"type\":\"bone_pose\",\"bone\":\"head\",\"x\":0.3,\"y\":0,\"z\":0}]"
+                    "description": "Input arguments passed to the tool. Optionally include an \"actions\" array to control the VRM avatar: [{\"type\":\"play_anim\",\"name\":\"Clapping\"}, {\"type\":\"expression\",\"name\":\"happy\",\"weight\":0.8}, {\"type\":\"bone_pose\",\"bone\":\"head\",\"x\":0.3,\"y\":0,\"z\":0}]. Optionally include a \"message\" string — natural-language feedback or encouragement to show to the user in a speech bubble."
                 },
                 "ts": {
                     "type": "number",

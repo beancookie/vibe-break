@@ -17,6 +17,7 @@ pub struct ParsedEvent {
     pub event_type: &'static str,
     pub meta: Value,
     pub actions: Vec<ActionCommand>,
+    pub message: Option<String>,
 }
 
 pub fn parse_event(tool_name: &str, tool_input: Option<&Value>) -> ParsedEvent {
@@ -33,6 +34,11 @@ pub fn parse_event(tool_name: &str, tool_input: Option<&Value>) -> ParsedEvent {
         .and_then(|v| serde_json::from_value::<Vec<ActionCommand>>(v.clone()).ok())
         .unwrap_or_default();
 
-    ParsedEvent { event_type, meta: json!({"tool_name": tool_name}), actions }
+    let message = tool_input
+        .and_then(|input| input.get("message"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    ParsedEvent { event_type, meta: json!({"tool_name": tool_name}), actions, message }
 }
 

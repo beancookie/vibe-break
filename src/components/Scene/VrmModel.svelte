@@ -23,6 +23,10 @@
 
   const { scene, camera } = useThrelte();
 
+  // Loading state for the inline spinner (true from startLoad until
+  // the first animation is playing and the model is visible).
+  let modelLoading = $state(true);
+
   // Non-reactive THREE objects (kept out of $state intentionally).
   let current: VRM | null = null;
   let mixer: AnimationMixer | null = null;
@@ -57,6 +61,7 @@
   const _v3c = new Vector3();
   const _v3d = new Vector3();
   const _v3e = new Vector3();
+  const _v3f = new Vector3();
   const _box = new Box3();
 
   function stopMixer() {
@@ -176,10 +181,11 @@
 
     setStatus(STATUS.LOADING_VRM(meta.name));
     setLoading(true);
+    modelLoading = true;
 
     try {
       const vrm = await loadVRM(meta.url);
-      if (myToken !== loadToken) { disposeVRM(vrm); return; }
+      if (myToken !== loadToken) { disposeVRM(vrm); modelLoading = false; return; }
       if (oldVrm) disposeVRM(oldVrm);
       current = vrm;
       vrm.scene.visible = false;
@@ -199,6 +205,7 @@
       setLoading(false);
     } catch (e: unknown) {
       if (myToken !== loadToken) return;
+      modelLoading = false;
       setStatus(STATUS.VRM_LOAD_FAILED(meta.url, errorMessage(e)));
       setLoading(false);
       if (oldVrm) disposeVRM(oldVrm);
@@ -224,6 +231,8 @@
     const idx = nameToVrmIdx(name);
     if (idx < 0) return;
     if (idx === lastLoadedIdx) return;
+
+    modelLoading = true;
 
     // Debounce: only the final selection within SWITCH_DEBOUNCE_MS
     // actually runs. If startLoad is already mid-flight, the
@@ -305,10 +314,12 @@
         // Until this point the scene was hidden in startLoad() to
         // avoid flashing the bind pose.
         vrm.scene.visible = true;
+        modelLoading = false;
         setStatus(STATUS.ANIM_PLAYING(name));
       })
       .catch((e: unknown) => {
         if (myAnimToken !== animToken) return;
+        modelLoading = false;
         setStatus(STATUS.ANIM_ERROR(errorMessage(e)));
         logger.error("[VRM]", "animation load failed", e);
       });
@@ -318,7 +329,10 @@
   $effect(() => {
     appState.stopToken;
     stopMixer();
-    if (current) current.scene.visible = true;
+    if (current) {
+      current.scene.visible = true;
+      modelLoading = false;
+    }
   });
 
   $effect(() => {
@@ -379,3 +393,33 @@
     }
   });
 </script>
+
+{#if modelLoading}
+  <div class="vrm-spinner" aria-hidden="true">
+    <div class="spinner-ring"></div>
+  </div>
+{/if}
+
+<style>
+  .vrm-spinner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .spinner-ring {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.15);
+    border-top-color: rgba(255, 255, 255, 0.85);
+    border-radius: 50%;
+    animation: vrm-spin 0.9s linear infinite;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  }
+  @keyframes vrm-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>

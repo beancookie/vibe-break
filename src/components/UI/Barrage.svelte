@@ -3,7 +3,7 @@
   import { isTauri } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { appState, recycleNews, MAX_NEWS } from "$lib/stores.svelte";
-  import { seedDevData } from "$lib/devSeed";
+  import { seedDevData } from "$lib/devMock";
   import BarrageItem from "./BarrageItem.svelte";
 
   const MAX_BARRAGE = 3;

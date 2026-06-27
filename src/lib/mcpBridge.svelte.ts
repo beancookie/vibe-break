@@ -88,6 +88,7 @@ export async function startMcpBridge(): Promise<() => void> {
     switch (type) {
       case "thinking":
         appState.aiState = "thinking";
+        appState.mcpUi.encourageMessage = "";
         if (!appState.thinkingStart) {
           appState.thinkingStart = Date.now();
           appState.thinkingPeriods.push({ start: appState.thinkingStart });
@@ -96,6 +97,9 @@ export async function startMcpBridge(): Promise<() => void> {
         break;
       case "thinking:end":
         appState.aiState = "idle";
+        if (payload.message) {
+          appState.mcpUi.encourageMessage = payload.message;
+        }
         if (appState.thinkingStart) {
           const last = appState.thinkingPeriods[appState.thinkingPeriods.length - 1];
           if (last && !last.end) last.end = Date.now();

@@ -63,6 +63,7 @@ pub(super) async fn handle(
         "meta": parsed.meta,
         "ts": ts,
         "actions": actions,
+        "message": parsed.message,
     });
 
     let result = app_handle.emit("mcp:event", payload);

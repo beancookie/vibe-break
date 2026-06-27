@@ -70,6 +70,7 @@ export const appState = $state({
     showEncouragement: false,
     showErrorFeedback: false,
     errorMsg: "",
+    encourageMessage: "",
   } as McpUiState,
 
   // Action commands from MCP
