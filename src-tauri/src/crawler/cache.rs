@@ -103,11 +103,18 @@ impl DedupCache {
                     continue;
                 }
             }
-            self.seen.insert(key, now);
             result.push(item);
         }
-        self.dirty = true;
         result
+    }
+
+    pub fn mark_seen(&mut self, source: &str, title: &str) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.seen.insert((source.to_string(), title.to_string()), now);
+        self.dirty = true;
     }
 
     pub fn cleanup(&mut self) {

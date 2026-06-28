@@ -85,6 +85,20 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
     Err(format!("No .vrm/.vrma files found. Tried: {tried}"))
 }
 
+#[tauri::command]
+fn block_news(
+    app: tauri::AppHandle,
+    cache: tauri::State<'_, Mutex<crawler::DedupCache>>,
+    source: String,
+    title: String,
+) -> Result<(), String> {
+    let mut dedup = cache.lock().map_err(|e| format!("cache lock failed: {e}"))?;
+    dedup.mark_seen(&source, &title);
+    dedup.save(&app);
+    log::info!("[crawler] block_news: source={source} title={title}");
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(
@@ -156,6 +170,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_assets,
             crawler::fetch_news,
+            block_news,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

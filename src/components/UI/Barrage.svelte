@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { isTauri } from "@tauri-apps/api/core";
+  import { invoke, isTauri } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { appState, recycleNews, MAX_NEWS } from "$lib/stores.svelte";
   import { seedMockNews, seedMockEncourage } from "$lib/devMock";
@@ -23,6 +23,12 @@
       if (first) blocked.delete(first);
     }
     removeItem(text);
+    const match = text.match(/^\[(.+?)\]\s(.+)$/);
+    if (match && isTauri()) {
+      invoke("block_news", { source: match[1], title: match[2] }).catch((e) =>
+        console.error("[Barrage] block_news failed:", e)
+      );
+    }
   }
 
   interface Item {
