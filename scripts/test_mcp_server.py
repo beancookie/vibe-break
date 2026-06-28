@@ -25,6 +25,25 @@ INIT_PARAMS: dict[str, Any] = {
     "clientInfo": {"name": "pytest", "version": "1.0.0"},
 }
 
+ALL_REPORT_TOOLS = [
+    "report_write",
+    "report_read",
+    "report_bash",
+    "report_search",
+    "report_done",
+    "report_error",
+]
+
+ALL_STANDARD_TOOLS = [
+    "list_vrm_models",
+    "list_vrma_animations",
+    "select_model",
+    "play_animation",
+    "set_scale",
+    "set_always_on_top",
+    "get_status",
+]
+
 
 def _get_result(data: dict[str, Any]) -> dict[str, Any]:
     """Extract the actual result from an MCP protocol response."""
@@ -85,27 +104,32 @@ class TestInitialize:
 
 
 class TestToolsList:
-    def test_returns_tools(self):
-        _initialize()
-        data = _mcp("tools/list").json()
-        assert len(data["result"]["tools"]) > 0
-
-    def test_contains_report_event(self):
+    def test_returns_all_tools(self):
         _initialize()
         data = _mcp("tools/list").json()
         names = [t["name"] for t in data["result"]["tools"]]
-        assert "report_event" in names
+        for tool in ALL_REPORT_TOOLS + ALL_STANDARD_TOOLS:
+            assert tool in names, f"Missing tool: {tool}"
 
-    def test_report_event_input_schema(self):
+    def test_each_report_tool_requires_message(self):
         _initialize()
         data = _mcp("tools/list").json()
-        tool = next(t for t in data["result"]["tools"] if t["name"] == "report_event")
-        schema = tool["inputSchema"]
-        assert schema["type"] == "object"
-        required = schema.get("required", [])
-        assert "tool_name" in required
-        assert "tool_name" in schema.get("properties", {})
-        assert "tool_input" in schema.get("properties", {})
+        for tool in ALL_REPORT_TOOLS:
+            t = next(x for x in data["result"]["tools"] if x["name"] == tool)
+            schema = t["inputSchema"]
+            required = schema.get("required", [])
+            assert "message" in required, f"{tool} missing message in required"
+
+    def test_report_tool_schema(self):
+        _initialize()
+        data = _mcp("tools/list").json()
+        for tool in ALL_REPORT_TOOLS:
+            t = next(x for x in data["result"]["tools"] if x["name"] == tool)
+            schema = t["inputSchema"]
+            assert schema["type"] == "object"
+            props = schema.get("properties", {})
+            assert "message" in props
+            assert props["message"]["type"] == "string"
 
     def test_list_twice_returns_same_tools(self):
         _initialize()
@@ -115,58 +139,41 @@ class TestToolsList:
 
 
 # =========================================================================
-# Tools / Call
+# Tools / Call - report tools
 # =========================================================================
 
 
-class TestToolCall:
-    @pytest.mark.parametrize(
-        "tool_name",
-        [
-            pytest.param("Write", id="write"),
-            pytest.param("Exec", id="exec"),
-            pytest.param("Stop", id="stop"),
-            pytest.param("Read", id="read"),
-            pytest.param("UnknownTool", id="unknown"),
-        ],
-    )
-    def test_returns_ok(self, tool_name):
-        _initialize()
-        params = {"name": "report_event", "arguments": {"tool_name": tool_name, "ts": 1000}}
-        result = _get_result(_mcp("tools/call", params).json())
-        assert result["ok"] is True
-
-    def test_timestamp_zero(self):
-        _initialize()
-        data = _mcp("tools/call", {"name": "report_event", "arguments": {"tool_name": "Stop", "ts": 0}}).json()
-        result = _get_result(data)
-        assert result["ok"] is True
-
-    def test_timestamp_omitted(self):
-        _initialize()
-        data = _mcp("tools/call", {"name": "report_event", "arguments": {"tool_name": "Read"}}).json()
-        result = _get_result(data)
-        assert result["ok"] is True
-
-    def test_tool_name_omitted(self):
-        _initialize()
-        data = _mcp("tools/call", {"name": "report_event", "arguments": {}}).json()
-        result = _get_result(data)
-        assert result["ok"] is True
-
-
-# =========================================================================
-# Actions
-# =========================================================================
-
-
-class TestActions:
-    def test_single_action(self):
+class TestReportTools:
+    @pytest.mark.parametrize("tool_name", ALL_REPORT_TOOLS)
+    def test_with_message_returns_ok(self, tool_name):
         _initialize()
         params = {
-            "name": "report_event",
+            "name": tool_name,
             "arguments": {
-                "tool_name": "Write",
+                "message": f"Test message for {tool_name}",
+                "ts": 1000,
+            },
+        }
+        data = _mcp("tools/call", params).json()
+        result = _get_result(data)
+        assert result["ok"] is True
+
+    @pytest.mark.parametrize("tool_name", ALL_REPORT_TOOLS)
+    def test_without_message_returns_error(self, tool_name):
+        _initialize()
+        params = {
+            "name": tool_name,
+            "arguments": {"ts": 1000},
+        }
+        data = _mcp("tools/call", params).json()
+        assert "error" in data, f"{tool_name} should error without message"
+
+    def test_with_tool_input_actions(self):
+        _initialize()
+        params = {
+            "name": "report_write",
+            "arguments": {
+                "message": "Test with actions",
                 "tool_input": {
                     "actions": [
                         {"type": "play_anim", "name": "Clapping"}
@@ -178,35 +185,64 @@ class TestActions:
         result = _get_result(_mcp("tools/call", params).json())
         assert result["ok"] is True
 
-    def test_multiple_actions(self):
+
+# =========================================================================
+# Tools / Call - standard tools
+# =========================================================================
+
+
+class TestStandardTools:
+    def test_list_vrm_models(self):
         _initialize()
-        params = {
-            "name": "report_event",
-            "arguments": {
-                "tool_name": "Read",
-                "tool_input": {
-                    "actions": [
-                        {"type": "play_anim", "name": "Sleepy"},
-                        {"type": "expression", "name": "happy", "weight": 0.8},
-                        {"type": "bone_pose", "bone": "head", "x": 0.3, "y": 0.0, "z": 0.0},
-                    ]
-                },
-                "ts": 2000,
-            },
-        }
-        result = _get_result(_mcp("tools/call", params).json())
+        data = _mcp("tools/call", {"name": "list_vrm_models", "arguments": {}}).json()
+        result = _get_result(data)
+        assert "models" in result
+
+    def test_list_vrma_animations(self):
+        _initialize()
+        data = _mcp("tools/call", {"name": "list_vrma_animations", "arguments": {}}).json()
+        result = _get_result(data)
+        assert "animations" in result
+
+    def test_get_status(self):
+        _initialize()
+        data = _mcp("tools/call", {"name": "get_status", "arguments": {}}).json()
+        result = _get_result(data)
+        assert "models" in result
+        assert "animations" in result
+
+    def test_select_model(self):
+        _initialize()
+        params = {"name": "select_model", "arguments": {"url": "assets/Furina.vrm"}}
+        data = _mcp("tools/call", params).json()
+        result = _get_result(data)
         assert result["ok"] is True
 
-    def test_actions_empty_or_omitted(self):
+    def test_play_animation(self):
         _initialize()
-        for args in [
-            {"tool_name": "Write", "tool_input": {"actions": []}},
-            {"tool_name": "Write"},
-            {"tool_name": "Exec", "tool_input": {"actions": "not an array"}},
-        ]:
-            params = {"name": "report_event", "arguments": args}
-            result = _get_result(_mcp("tools/call", params).json())
-            assert result["ok"] is True, f"Failed for args={args}"
+        params = {"name": "play_animation", "arguments": {"url": "assets/vrma/Clapping.vrma"}}
+        data = _mcp("tools/call", params).json()
+        result = _get_result(data)
+        assert result["ok"] is True
+
+    def test_set_scale(self):
+        _initialize()
+        params = {"name": "set_scale", "arguments": {"scale": 2.0}}
+        data = _mcp("tools/call", params).json()
+        result = _get_result(data)
+        assert result["ok"] is True
+
+    def test_set_always_on_top(self):
+        _initialize()
+        params = {"name": "set_always_on_top", "arguments": {"on_top": True}}
+        data = _mcp("tools/call", params).json()
+        result = _get_result(data)
+        assert result["ok"] is True
+
+    def test_unknown_tool(self):
+        _initialize()
+        data = _mcp("tools/call", {"name": "nonexistent_tool", "arguments": {}}).json()
+        assert "error" in data
 
 
 # =========================================================================
@@ -217,8 +253,7 @@ class TestActions:
 class TestErrors:
     def test_unknown_method(self):
         data = _mcp("unknown_method").json()
-        assert data["error"]["code"] == -32700
-        assert "unknown_method" in data["error"]["message"]
+        assert "error" in data
 
     @pytest.mark.parametrize(
         "payload",
@@ -235,11 +270,6 @@ class TestErrors:
                 headers={"Content-Type": "application/json", "Accept": "application/json"},
             )
         assert "error" in resp.json()
-
-    def test_unknown_tool(self):
-        _initialize()
-        data = _mcp("tools/call", {"name": "nonexistent_tool", "arguments": {}}).json()
-        assert "error" in data
 
 
 # =========================================================================

@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
+use serde_json::Value;
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ActionCommand {
     #[serde(rename = "type")]
     pub action_type: String,
@@ -13,32 +13,21 @@ pub struct ActionCommand {
     pub z: Option<f32>,
 }
 
-pub struct ParsedEvent {
-    pub event_type: &'static str,
-    pub meta: Value,
-    pub actions: Vec<ActionCommand>,
-    pub message: Option<String>,
+pub fn parse_event_type(tool_name: &str) -> &'static str {
+    match tool_name {
+        "report_write" => "trigger:write",
+        "report_read" => "trigger:read",
+        "report_bash" => "trigger:exec",
+        "report_search" => "trigger:search",
+        "report_done" => "thinking:end",
+        "report_error" => "system:error",
+        _ => "thinking",
+    }
 }
 
-pub fn parse_event(tool_name: &str, tool_input: Option<&Value>) -> ParsedEvent {
-    let event_type = match tool_name {
-        "Write" => "trigger:write",
-        "Exec" => "trigger:exec",
-        "Read" => "trigger:read",
-        "Stop" => "thinking:end",
-        _ => "thinking",
-    };
-
-    let actions = tool_input
+pub fn parse_event(tool_input: Option<&Value>) -> Vec<ActionCommand> {
+    tool_input
         .and_then(|input| input.get("actions"))
         .and_then(|v| serde_json::from_value::<Vec<ActionCommand>>(v.clone()).ok())
-        .unwrap_or_default();
-
-    let message = tool_input
-        .and_then(|input| input.get("message"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    ParsedEvent { event_type, meta: json!({"tool_name": tool_name}), actions, message }
+        .unwrap_or_default()
 }
-

@@ -12,15 +12,15 @@ use std::path::{Path, PathBuf};
 /// Matches the `width: 1200, height: 1600` default in tauri.conf.json.
 const WINDOW_ASPECT_W_OVER_H: f64 = 0.75;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct AssetEntry {
     /// File name without extension, used as the display name.
-    name: String,
+    pub name: String,
     /// Relative path inside `$RESOURCE`, e.g. "assets/Furina.vrm".
-    url: String,
+    pub url: String,
 }
 
-fn collect(dir: &Path, ext: &str, prefix: &str, out: &mut Vec<AssetEntry>) {
+pub fn collect_dir(dir: &Path, ext: &str, prefix: &str, out: &mut Vec<AssetEntry>) {
     let Ok(entries) = fs::read_dir(dir) else { return };
     let mut found: Vec<AssetEntry> = entries
         .filter_map(|e| e.ok())
@@ -63,13 +63,13 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
 
     for base in &bases {
         let assets_dir = base.join("assets");
-        if !assets_dir.exists() {
-            continue;
-        }
-        collect(&assets_dir, "vrm", "assets/", &mut out);
+            if !assets_dir.exists() {
+                continue;
+            }
+            collect_dir(&assets_dir, "vrm", "assets/", &mut out);
         let vrma_dir = assets_dir.join("vrma");
         if vrma_dir.exists() {
-            collect(&vrma_dir, "vrma", "assets/vrma/", &mut out);
+            collect_dir(&vrma_dir, "vrma", "assets/vrma/", &mut out);
         }
         if !out.is_empty() {
             return Ok(out);

@@ -1,7 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
-import { appState, type AiState } from "$lib/stores.svelte";
+import { appState, setSelectedVrm, setSelectedAnim, setPetScale, bumpStopToken, type AiState } from "$lib/stores.svelte";
 import { logger } from "$lib/logger";
 import { STATUS } from "$lib/strings";
+import { isTauri } from "@tauri-apps/api/core";
 
 export type ActionCommand = {
   type: "play_anim" | "expression" | "bone_pose";
@@ -15,10 +16,11 @@ export type ActionCommand = {
 };
 
 export type McpEventPayload = {
-  type: "thinking" | "thinking:end" | "trigger:write" | "trigger:exec" | "trigger:read" | "system:done" | "system:error" | "system:progress" | "trigger:url";
+  type: "thinking" | "thinking:end" | "trigger:write" | "trigger:exec" | "trigger:read" | "trigger:search" | "system:done" | "system:error" | "system:progress" | "trigger:url" | "tool:call" | "tool:select_model" | "tool:play_animation" | "tool:set_scale" | "tool:set_always_on_top";
   meta?: Record<string, unknown>;
   ts?: number;
   actions?: ActionCommand[];
+  message?: string;
 };
 
 const AI_ANIM_MAP: Record<AiState, string | undefined> = {
@@ -76,6 +78,56 @@ function handleActions(actions: ActionCommand[]) {
   }
 }
 
+function handleToolCall(toolName: string, meta: Record<string, unknown> | undefined) {
+  const args = meta?.args as Record<string, unknown> | undefined;
+  switch (toolName) {
+    case "select_model": {
+      const url = args?.url as string | undefined;
+      if (url) {
+        setSelectedVrm(url);
+        bumpStopToken();
+        appState.status = STATUS.SWITCHING_MODEL;
+        logger.info("[MCP]", "select_model", url);
+      }
+      break;
+    }
+    case "play_animation": {
+      const url = args?.url as string | undefined;
+      if (url) {
+        setSelectedAnim(url);
+        appState.status = STATUS.SWITCHING_ANIM;
+        logger.info("[MCP]", "play_animation", url);
+      }
+      break;
+    }
+    case "set_scale": {
+      const scale = args?.scale as number | undefined;
+      if (typeof scale === "number" && scale >= 0.1 && scale <= 10.0) {
+        setPetScale(scale);
+        logger.info("[MCP]", "set_scale", scale);
+      }
+      break;
+    }
+    case "set_always_on_top": {
+      const onTop = args?.on_top as boolean | undefined;
+      if (typeof onTop === "boolean" && isTauri()) {
+        import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+          getCurrentWindow().setAlwaysOnTop(onTop);
+        });
+        appState.alwaysOnTop = onTop;
+        logger.info("[MCP]", "set_always_on_top", onTop);
+      }
+      break;
+    }
+  }
+}
+
+function showMessage(msg: string | undefined) {
+  if (msg) {
+    appState.mcpUi.encourageMessage = msg;
+  }
+}
+
 export async function startMcpBridge(): Promise<() => void> {
   const unlisten = await listen<McpEventPayload>("mcp:event", (evt) => {
     const payload = evt.payload;
@@ -94,24 +146,29 @@ export async function startMcpBridge(): Promise<() => void> {
           appState.thinkingPeriods.push({ start: appState.thinkingStart });
         }
         switchAnimation("thinking");
+        showMessage(payload.message);
         break;
       case "thinking:end":
         appState.aiState = "idle";
-        if (payload.message) {
-          appState.mcpUi.encourageMessage = payload.message;
-        }
         if (appState.thinkingStart) {
           const last = appState.thinkingPeriods[appState.thinkingPeriods.length - 1];
           if (last && !last.end) last.end = Date.now();
           appState.thinkingStart = 0;
         }
         switchAnimation("idle");
+        showMessage(payload.message);
         break;
       case "trigger:write":
         appState.counters.filesWritten++;
+        showMessage(payload.message);
         break;
       case "trigger:exec":
         appState.counters.commandsRun++;
+        showMessage(payload.message);
+        break;
+      case "trigger:read":
+      case "trigger:search":
+        showMessage(payload.message);
         break;
       case "system:error":
         appState.counters.errors++;
@@ -120,10 +177,33 @@ export async function startMcpBridge(): Promise<() => void> {
         const meta = payload.meta as Record<string, unknown> | undefined;
         appState.mcpUi.errorMsg = typeof meta?.message === "string" ? meta.message : "Unknown error";
         switchAnimation("error");
+        showMessage(payload.message);
         break;
       case "system:done":
         appState.aiState = "done";
         switchAnimation("done");
+        showMessage(payload.message);
+        break;
+      case "tool:select_model":
+        handleToolCall("select_model", payload.meta);
+        showMessage(payload.message);
+        break;
+      case "tool:play_animation":
+        handleToolCall("play_animation", payload.meta);
+        showMessage(payload.message);
+        break;
+      case "tool:set_scale":
+        handleToolCall("set_scale", payload.meta);
+        showMessage(payload.message);
+        break;
+      case "tool:set_always_on_top":
+        handleToolCall("set_always_on_top", payload.meta);
+        showMessage(payload.message);
+        break;
+      case "tool:call":
+        const tn = payload.meta?.tool_name as string | undefined;
+        if (tn) handleToolCall(tn, payload.meta);
+        showMessage(payload.message);
         break;
     }
 

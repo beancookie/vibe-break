@@ -14,6 +14,8 @@ export const STATUS = {
   THINKING: "🤔 Thinking...",
   DONE: "✅ Done!",
   ERROR_MSG: "❌ Error",
+  SWITCHING_MODEL: "Switching model…",
+  SWITCHING_ANIM: "Switching animation…",
 } as const;
 
 export const ERROR = {

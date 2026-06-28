@@ -18,6 +18,7 @@
 - 🪟 跨平台桌面端打包（Tauri 2：Windows / macOS / Linux）
 - 🔁 VRMA 动画 `LoopPingPong` 循环播放，消除跳帧
 - 💾 自动持久化偏好（选中模型、动画、缩放、窗口置顶）
+- 🤖 内置 **MCP Server**（`streamable-http`），支持与 Claude Code 等 MCP 客户端交互，通过 AI 直接控制模型切换、动画播放、缩放调整等
 
 ## 🛠 技术栈
 
@@ -53,6 +54,8 @@ vibe-break/
 │   ├── capabilities/default.json # 权限配置
 │   ├── Cargo.toml
 │   └── tauri.conf.json
+├── .mcp.json                      # MCP Server 配置（Claude Code 等 AI 客户端连接用）
+├── .claude.json                   # Claude Code 项目配置（MCP 使用指引）
 ├── .github/workflows/ci.yml      # CI（check + lint + test + build）
 ├── eslint.config.js
 ├── vitest.config.ts
@@ -120,13 +123,115 @@ pnpm test:watch    # 监听模式
 | `pnpm lint` | ESLint 检查 |
 | `pnpm test` | 运行单元测试 |
 | `pnpm test:watch` | 监听模式测试 |
-| `pnpm format` | 自动格式化代码 |
+| `pnpm mcp` | 启动 MCP Server（standalone，不启动 GUI） |
 | `pnpm format:check` | 检查代码格式 |
 | `pnpm preview` | 预览构建产物 |
 | `pnpm clean` | 清理构建产物 |
 | `pnpm tauri:dev` | 同步资源再启动 Tauri 开发模式（**推荐**） |
 | `pnpm tauri dev` | 直接启动 Tauri 开发模式（不自动同步资源） |
 | `pnpm tauri build` | 打包桌面应用 |
+
+## 🤖 MCP 配置
+
+本项目内置了 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) Server，允许 AI 编程助手（如 Claude Code）直接与运行时交互。
+
+### MCP Client 配置
+
+Claude Code 内置了 MCP Client 能力，通过以下方式配置：
+
+#### 方式一：命令行配置（推荐）
+
+```bash
+claude mcp add vibe-break --transport http http://127.0.0.1:39876/
+```
+
+如果配置有变更需先移除再添加：
+
+```bash
+claude mcp remove vibe-break
+claude mcp add vibe-break --transport http http://127.0.0.1:39876/
+```
+
+查看已配置的 MCP 服务器：
+
+```bash
+claude mcp list
+# 或在 Claude Code 中运行 /mcp
+```
+
+#### 方式二：配置文件（`.mcp.json`）
+
+在项目根目录创建 `.mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "vibe-break": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:39876/"
+    }
+  }
+}
+```
+
+配置文件生效后，在 Claude Code 中运行 `/mcp restart` 重启即可生效。
+
+#### 配置文件位置
+
+| 位置 | 作用域 |
+|------|--------|
+| 项目根目录 `.mcp.json` | 仅当前项目 |
+| `~/.claude/settings.json` | 全局 |
+| `~/.claude/settings.local.json` | 全局（不提交 git），优先级最高 |
+
+### 支持的 Tools
+
+| Tool | 说明 |
+|------|------|
+| `report_event` | 报告 AI 编码事件（Write / Edit / Bash / Read 等），驱动 VRM 可视化反馈 |
+| `list_vrm_models` | 列出 assets/ 中的所有 VRM 模型 |
+| `list_vrma_animations` | 列出 assets/vrma/ 中的所有 VRMA 动画 |
+| `select_model` | 切换到指定 VRM 模型 |
+| `play_animation` | 播放指定 VRMA 动画 |
+| `set_scale` | 调整模型缩放比例（0.1 ~ 10.0） |
+| `set_always_on_top` | 设置窗口置顶 |
+| `get_status` | 获取当前状态（模型、动画、缩放、窗口置顶） |
+
+### 配合 Claude Code 使用
+
+1. 确保 Tauri 应用正在运行（`pnpm tauri:dev`）
+2. 项目根目录已包含 `.claude.json`，配置了 MCP 使用指引
+3. 在 Claude Code 中可直接通过自然语言控制应用或获得编码可视化反馈：
+   - *"切换到 xxx 模型"*
+   - *"播放 xxx 动画"*
+   - *"把模型放大到 2 倍"*
+   - *"将窗口置顶"*
+   - *"当前是什么模型？"*
+
+### 编码可视化反馈
+
+每次 Claude Code 使用工具时，会通过 `report_event` 自动通知应用，触发 VRM 角色做出对应反应：
+
+| 事件 | VRM 反应 |
+|------|----------|
+| 思考中（Thinking） | 播放 `Thinking` 动画 |
+| 完成任务（Done） | 播放 `Clapping` 动画 |
+| 出错（Error） | 播放 `Sad` 动画 |
+| 写文件（Write） | 计数增加 |
+| 执行命令（Exec） | 计数增加 |
+| 读文件（Read） | 计数增加 |
+
+### Studio - 支持对接 MCP 的 AI 编辑器
+
+支持 MCP Client 的编辑器可直接使用本项目提供的 MCP tools：
+
+| 编辑器 | 配置方式 |
+|--------|----------|
+| **Cursor** | 在 Cursor 设置中配置 MCP Server，或通过项目级 `.mcp.json` |
+| **Windsurf** | 在设置中添加 MCP Server 端点 |
+| **Continue (VS Code 插件)** | 在 `~/.continue/config.json` 中添加 `experimental.mcpServers` |
+
+> 连接成功后即可通过 AI 助手直接控制模型切换、动画播放、缩放调整等，无需手动操作。
 
 ## 🏗 架构概要
 

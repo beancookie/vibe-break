@@ -22,6 +22,7 @@ export interface McpUiState {
   showEncouragement: boolean;
   showErrorFeedback: boolean;
   errorMsg: string;
+  encourageMessage: string;
 }
 
 export interface NewsItem {
