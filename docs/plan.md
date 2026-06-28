@@ -170,6 +170,7 @@ Claude Code 调用 `report_event` tool：
 | **多窗口/多宠物** | ❌ | 单窗口 |
 | **done/error  tool schema** | ⚠️ | 前端处理了但 MCP tool 描述未枚举，Claude 不会自动调用 |
 | **CSP 重复 key** | ⚠️ | tauri.conf.json 中 csp 出现两次 |
+| **新闻爬取插件框架** | ⚠️ | 架构已设计，详见 [crawler-plugin.md](./crawler-plugin.md)，待实现 |
 | **插件系统** | ❌ | PluginManager、manifest、权限系统均未实现 |
 
 ---
@@ -226,7 +227,7 @@ flowchart LR
 - [ ] progress 进度条
 
 ### M3 — News + 鼓励
-- [ ] NewsItem 抓取（V2EX / 掘金 RSS）
+- [ ] NewsItem 抓取（插件式框架，详见 [crawler-plugin.md](./crawler-plugin.md)）
 - [ ] NewsTicker 轮播 UI
 - [ ] 鼓励触发逻辑（写入/命令计数阈值）
 

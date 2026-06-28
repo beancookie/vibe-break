@@ -11,7 +11,7 @@ const SEED_NEWS: { title: string; source: string; link: string }[] = [
 ];
 
 export function seedMockNews() {
-  if (!import.meta.env.VITE_SEED_NEWS) return;
+  if (import.meta.env.VITE_SEED_NEWS !== "true") return;
   if (appState.news.length > 0) return;
 
   for (const item of SEED_NEWS) {
@@ -32,7 +32,7 @@ const MOCK_INTERVAL_MS = 15_000;
 let encourageTimer: ReturnType<typeof setInterval> | null = null;
 
 export function seedMockEncourage() {
-  if (!import.meta.env.VITE_SEED_ENCOURAGE) return;
+  if (import.meta.env.VITE_SEED_ENCOURAGE !== "true") return;
   if (encourageTimer !== null) return;
   encourageTimer = setInterval(() => {
     if (appState.mcpUi.encourageMessage) return;

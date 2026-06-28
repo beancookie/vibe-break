@@ -2,11 +2,12 @@ import { mount } from "svelte";
 import "./app.css";
 import VrmViewer from "./components/VrmViewer.svelte";
 import { listAssets } from "$lib/three/loadAssets";
-import { isTauri } from "@tauri-apps/api/core";
+import { isTauri, invoke } from "@tauri-apps/api/core";
 import { STATUS, ERROR } from "$lib/strings";
 import { appState, setVrmList, setAnimList, setScanning, setStatus, setSelectedVrm, setSelectedAnim, setPetScale } from "$lib/stores.svelte";
 import { loadPersistedState } from "$lib/persisted";
 import { logger } from "$lib/logger";
+import { pushNews } from "$lib/stores.svelte";
 
 const target = document.getElementById("app") as HTMLDivElement | null;
 if (!target) {
@@ -53,6 +54,23 @@ async function scanAssets(): Promise<void> {
   setStatus(STATUS.INITIALIZING);
 }
 
+async function fetchNews(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const items = await invoke<{ title: string; link: string; source: string }[]>("fetch_news");
+    items.forEach(pushNews);
+    logger.info("[Init]", `loaded ${items.length} news items`);
+  } catch (err) {
+    logger.warn("[Init]", "fetchNews failed", err);
+  }
+}
+
+async function startNewsTimer(): Promise<void> {
+  await fetchNews();
+  setInterval(fetchNews, 10 * 60 * 1000);
+  logger.info("[Init]", "news timer started (10 min interval)");
+}
+
 async function initBrowserFallback(): Promise<void> {
   setScanning(false);
   setVrmList([]);
@@ -75,6 +93,8 @@ async function init(): Promise<void> {
 
     const { startMcpBridge } = await import("$lib/mcpBridge.svelte");
     await startMcpBridge();
+
+    startNewsTimer().catch((err) => logger.warn("[Init]", "news timer failed", err));
   } else {
     await initBrowserFallback();
   }

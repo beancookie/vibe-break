@@ -1,3 +1,6 @@
+use std::sync::Mutex;
+
+mod crawler;
 mod mcp_server;
 
 use serde::Serialize;
@@ -84,6 +87,10 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info")
+    ).init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -91,6 +98,8 @@ pub fn run() {
             // Start the MCP HTTP server (background tokio task) so Claude Code
             // can connect and push coding events via the report_event tool.
             mcp_server::start(app.handle().clone());
+
+            app.manage(Mutex::new(crawler::DedupCache::load(app.handle())));
 
             // The asset:// protocol scope is configured in
             // tauri.conf.json. In Tauri 2 the static scope patterns may
@@ -144,7 +153,10 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![list_assets])
+        .invoke_handler(tauri::generate_handler![
+            list_assets,
+            crawler::fetch_news,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
