@@ -146,20 +146,16 @@
    * resize event (which the Rust hook corrects) never has to fight
    * the JS one.
    */
-  const PX_PER_UNIT = 360;
   const MIN_WIN_H = 600;
   const MIN_WIN_W = 300;
+  const BASE_WIN_W = 540;
+  const WIN_ASPECT = 3 / 4;
 
-  function resizeWindowToVRM(vrm: VRM, naturalHeight: number) {
+  function resizeWindowToVRM(_vrm: VRM, _naturalHeight: number) {
     const scale = appState.petScale;
-    _box.setFromObject(vrm.scene);
-    const modelHeight = naturalHeight * scale;
 
-    const h = Math.max(
-      MIN_WIN_H,
-      Math.min(1800, Math.round(modelHeight * PX_PER_UNIT) + 64),
-    );
-    const w = Math.max(MIN_WIN_W, Math.min(1200, Math.round(h * 0.75)));
+    const w = Math.max(MIN_WIN_W, Math.min(1200, Math.round(BASE_WIN_W * scale)));
+    const h = Math.max(MIN_WIN_H, Math.min(1800, Math.round(w / WIN_ASPECT)));
 
     getCurrentWindow()
       .setSize(new LogicalSize(w, h))
@@ -338,9 +334,9 @@
   $effect(() => {
     let s = appState.petScale;
     if (current && lastNaturalHeight > 0) {
-      const rawH = Math.round(lastNaturalHeight * s * PX_PER_UNIT) + 64;
-      if (rawH < MIN_WIN_H) {
-        s = (MIN_WIN_H - 64) / PX_PER_UNIT / lastNaturalHeight;
+      const rawW = Math.round(BASE_WIN_W * s);
+      if (rawW < MIN_WIN_W) {
+        s = MIN_WIN_W / BASE_WIN_W;
         appState.petScale = s;
       }
     }
@@ -350,6 +346,7 @@
     if (current && lastNaturalHeight > 0) {
       applyCamera(lastNaturalHeight, lastCameraTarget, s);
       resizeWindowToVRM(current, lastNaturalHeight);
+      appState.status = STATUS.ZOOM_PERCENT(Math.round(s * 100));
     }
   });
 
