@@ -201,7 +201,10 @@
     } catch (e: unknown) {
       if (myToken !== loadToken) return;
       modelLoading = false;
-      setStatus(STATUS.VRM_LOAD_FAILED(meta.url, errorMessage(e)));
+      const msg = errorMessage(e);
+      const stack = e instanceof Error ? e.stack : undefined;
+      logger.error("[VRM]", `startLoad failed url=${meta.url} name=${meta.name} error=${msg}`, stack ?? "");
+      setStatus(STATUS.VRM_LOAD_FAILED(meta.url, msg));
       setLoading(false);
       if (oldVrm) disposeVRM(oldVrm);
       lastLoadedIdx = -1;

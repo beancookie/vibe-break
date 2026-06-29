@@ -32,8 +32,19 @@ async function restorePersisted(): Promise<void> {
 
 async function scanAssets(): Promise<void> {
   const all = await listAssets();
+  logger.info("[Init]", `scanAssets found ${all.length} total assets`);
+
   const vrms = all.filter((a) => a.url.toLowerCase().endsWith(".vrm"));
   const vrmas = all.filter((a) => a.url.toLowerCase().endsWith(".vrma"));
+  logger.info("[Init]", `scanAssets vrms=${vrms.length} vrmas=${vrmas.length}`);
+
+  if (vrms.length > 0) {
+    logger.info("[Init]", `VRM list: ${vrms.map((v) => v.name).join(", ")}`);
+  }
+  if (vrmas.length > 0) {
+    logger.info("[Init]", `VRMA list: ${vrmas.map((a) => a.name).join(", ")}`);
+  }
+
   setVrmList(vrms);
   setAnimList(vrmas);
 
@@ -48,6 +59,7 @@ async function scanAssets(): Promise<void> {
 
   const idx = vrms.findIndex((v) => v.name === appState.selectedVrm);
   if (idx < 0 && vrms.length > 0) {
+    logger.info("[Init]", `auto-select first VRM: ${vrms[0].name}`);
     setSelectedVrm(vrms[0].name);
   }
 
@@ -101,6 +113,14 @@ async function init(): Promise<void> {
 }
 
 init().catch((err) => logger.error("[Init]", "init failed", err));
+
+window.addEventListener("error", (event) => {
+  logger.error("[Global]", `uncaught error: ${event.message}`, event.filename, event.lineno, event.colno);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  logger.error("[Global]", `unhandled rejection: ${reason}`, event.reason);
+});
 
 (window as any).__appState = appState;
 

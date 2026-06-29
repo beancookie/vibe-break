@@ -23,7 +23,14 @@ export default defineConfig(async () => ({
     },
   },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
+  build: {
+    rollupOptions: {
+      treeshake: false,
+    },
+    target: "es2021",
+    minify: "esbuild",
+  },
+
   clearScreen: false,
   server: {
     port: 1420,

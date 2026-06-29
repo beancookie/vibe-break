@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 
 mod crawler;
+mod logger;
 mod mcp_server;
 
 use serde::Serialize;
@@ -49,25 +50,32 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
     let mut bases: Vec<PathBuf> = Vec::new();
 
     if let Ok(p) = app.path().resource_dir() {
+        log::info!("[list_assets] resource_dir={}", p.display());
         bases.push(p);
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            bases.push(dir.join("resources"));
+            let dev = dir.join("resources");
+            log::info!("[list_assets] exe_parent/resources={}", dev.display());
+            bases.push(dev);
         }
     }
 
     for base in &bases {
         let assets_dir = base.join("assets");
-            if !assets_dir.exists() {
-                continue;
-            }
-            collect_dir(&assets_dir, "vrm", "assets/", &mut out);
+        log::info!("[list_assets] trying {}", assets_dir.display());
+        if !assets_dir.exists() {
+            log::info!("[list_assets]   not found");
+            continue;
+        }
+        collect_dir(&assets_dir, "vrm", "assets/", &mut out);
         let vrma_dir = assets_dir.join("vrma");
         if vrma_dir.exists() {
             collect_dir(&vrma_dir, "vrma", "assets/vrma/", &mut out);
         }
         if !out.is_empty() {
+            let names: Vec<&str> = out.iter().map(|a| a.name.as_str()).collect();
+            log::info!("[list_assets] found {} assets: {:?}", out.len(), names);
             return Ok(out);
         }
         out.clear();
@@ -104,6 +112,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // Start the MCP HTTP server (background tokio task) so Claude Code
             // can connect and push coding events via the report_event tool.
@@ -135,7 +144,10 @@ pub fn run() {
             let scope = app.asset_protocol_scope();
             for c in &candidates {
                 if c.exists() {
+                    log::info!("[setup] allow_directory scope={}", c.display());
                     let _ = scope.allow_directory(c, true);
+                } else {
+                    log::warn!("[setup] candidate does not exist: {}", c.display());
                 }
             }
 
@@ -145,6 +157,7 @@ pub fn run() {
             list_assets,
             crawler::fetch_news,
             block_news,
+            logger::append_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

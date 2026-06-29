@@ -28,12 +28,12 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' asset:;",
+      "csp": "default-src 'self'; img-src 'self' asset: https: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' asset: http://asset.localhost https://asset.localhost;",
       "assetProtocol": {
         "enable": true,
         "scope": {
           "requireLiteralLeadingDot": false,
-          "allow": ["$RESOURCE/**"]
+          "allow": ["$RESOURCE/**", "$RESOURCE/resources/**"]
         }
       }
     }

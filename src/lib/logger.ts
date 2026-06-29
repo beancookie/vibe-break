@@ -1,3 +1,5 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
@@ -22,6 +24,16 @@ function formatMessage(level: LogLevel, tag: string, message: string): string {
   return `[${ts}] [${level.toUpperCase()}] [${tag}] ${message}`;
 }
 
+function writeToFile(level: LogLevel, tag: string, message: string, args: unknown[]): void {
+  if (!isTauri()) return;
+  const extra = args.length > 0 ? " " + args.map((a) => {
+    try { return JSON.stringify(a); } catch { return String(a); }
+  }).join(" ") : "";
+  invoke("append_log", { level, message: `[${tag}] ${message}${extra}` }).catch(() => {
+    // silently ignore – if the log can't be written we can't log that either
+  });
+}
+
 function log(level: LogLevel, tag: string, message: string, ...args: unknown[]): void {
   if (!shouldLog(level)) return;
   const formatted = formatMessage(level, tag, message);
@@ -39,6 +51,7 @@ function log(level: LogLevel, tag: string, message: string, ...args: unknown[]):
       console.error(formatted, ...args);
       break;
   }
+  writeToFile(level, tag, message, args);
 }
 
 export const logger = {
