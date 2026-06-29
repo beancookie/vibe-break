@@ -150,10 +150,6 @@ impl LuaPlugin {
 
 #[async_trait]
 impl CrawlerPlugin for LuaPlugin {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
     async fn fetch(&self) -> Vec<NewsItem> {
         log::info!("[crawler] {}: requesting {} {}", self.name, self.method, self.url);
 

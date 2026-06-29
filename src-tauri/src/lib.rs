@@ -8,10 +8,6 @@ use tauri::Manager;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Pet-window aspect ratio (width / height). 0.75 = 3:4 portrait.
-/// Matches the `width: 1200, height: 1600` default in tauri.conf.json.
-const WINDOW_ASPECT_W_OVER_H: f64 = 0.75;
-
 #[derive(Serialize, Clone)]
 pub struct AssetEntry {
     /// File name without extension, used as the display name.
@@ -142,30 +138,8 @@ pub fn run() {
                     let _ = scope.allow_directory(c, true);
                 }
             }
+
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            // Lock the pet window to a fixed aspect ratio. Tauri has no
-            // native aspect-ratio option, so we hook the OS resize event
-            // and re-issue a set_size with the width recomputed from
-            // the new height. The "pet" resizes itself as well via
-            // JS (appState.petScale), so this constraint only kicks in
-            // for user-driven window drags.
-            if let tauri::WindowEvent::Resized(size) = event {
-                let h = size.height.max(1) as f64;
-                let w = size.width as f64;
-                let target_w = (h * WINDOW_ASPECT_W_OVER_H).round() as u32;
-                // Only push a corrected size when the OS has actually
-                // produced an off-ratio size. set_size itself fires
-                // another Resized event; the comparison against the
-                // current width keeps us from looping.
-                if (w - target_w as f64).abs() >= 1.0 {
-                    let _ = window.set_size(tauri::PhysicalSize::new(
-                        target_w,
-                        size.height,
-                    ));
-                }
-            }
         })
         .invoke_handler(tauri::generate_handler![
             list_assets,

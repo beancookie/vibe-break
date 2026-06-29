@@ -90,6 +90,7 @@ impl DedupCache {
     }
 
     pub fn filter(&mut self, items: Vec<NewsItem>) -> Vec<NewsItem> {
+        self.cleanup();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()

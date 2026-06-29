@@ -20,7 +20,6 @@ pub struct NewsItem {
 
 #[async_trait]
 pub trait CrawlerPlugin: Send + Sync {
-    fn name(&self) -> &str;
     async fn fetch(&self) -> Vec<NewsItem>;
 }
 
