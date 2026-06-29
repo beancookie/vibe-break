@@ -61,7 +61,6 @@
   const _v3c = new Vector3();
   const _v3d = new Vector3();
   const _v3e = new Vector3();
-  const _v3f = new Vector3();
   const _box = new Box3();
 
   function stopMixer() {

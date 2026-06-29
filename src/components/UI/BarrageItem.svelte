@@ -10,13 +10,13 @@
   } = $props();
 
   const TRACK_COUNT = 10;
-  const y = 3 + track * (72 / TRACK_COUNT);
-  const delay = track * 1.5;
+  let y = $derived(3 + track * (72 / TRACK_COUNT));
+  let delay = $derived(track * 1.5);
   const duration = 7 + Math.random() * 4;
   let paused = $state(false);
   let timer: ReturnType<typeof setTimeout>;
 
-  const DURATION_MS = (duration + delay) * 1000;
+  let DURATION_MS = $derived((duration + delay) * 1000);
 
   onMount(() => {
     timer = setTimeout(() => onexpired(text), DURATION_MS);

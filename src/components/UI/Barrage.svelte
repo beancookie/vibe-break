@@ -13,7 +13,7 @@
   let blocked = $state(new Set<string>());
   let activeTracks = $state(new Set<number>());
 
-  async function blockItem(text: string, link: string) {
+  async function blockItem(text: string, link: string | undefined) {
     if (link && isTauri()) {
       await openUrl(link);
     }
@@ -22,7 +22,7 @@
       const first = blocked.values().next().value;
       if (first) blocked.delete(first);
     }
-    removeItem(text);
+    removeItem(text, link);
     const match = text.match(/^\[(.+?)\]\s(.+)$/);
     if (match && isTauri()) {
       invoke("block_news", { source: match[1], title: match[2] }).catch((e) =>
@@ -34,13 +34,13 @@
   interface Item {
     id: number;
     text: string;
-    link: string;
+    link?: string;
     track: number;
   }
 
   let items: Item[] = $state([]);
 
-  function removeItem(text: string, link: string) {
+  function removeItem(text: string, link: string | undefined) {
     const removed = items.find((i) => i.text === text);
     if (removed) activeTracks.delete(removed.track);
     items = items.filter((i) => i.text !== text);
@@ -71,7 +71,7 @@
       if (items.some((i) => i.text === text)) break;
       const track = pickTrack();
       if (activeTracks.size < TRACK_COUNT) activeTracks.add(track);
-      items = [...items, { id: ++idCounter, text, link: first.link, track }];
+      items = [...items, { id: ++idCounter, text, link: first.link ?? "", track }];
       appState.news = appState.news.slice(1);
     }
   }

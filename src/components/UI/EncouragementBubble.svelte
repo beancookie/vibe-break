@@ -8,8 +8,6 @@
   let fadingOut = $state(false);
   let typewriterText = $state("");
   let isTyping = $state(false);
-  let fullText = $state("");
-
   let typingTimer: ReturnType<typeof setInterval> | null = null;
   let dismissTimer: ReturnType<typeof setTimeout> | null = null;
   let typingStartTime = $state(0);
@@ -24,7 +22,6 @@
 
   function startTyping(msg: string) {
     resetTimers();
-    fullText = msg;
     typewriterText = "";
     isTyping = true;
     fadingOut = false;
