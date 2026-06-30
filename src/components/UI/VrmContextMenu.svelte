@@ -179,15 +179,6 @@
   let currentLocale = $derived(appState.locale);
   let locales = $derived(getSupportedLocales());
 
-  let displayStatus = $derived.by(() => {
-    switch (appState.aiState) {
-      case "thinking": return STATUS.THINKING;
-      case "done": return STATUS.DONE;
-      case "error": return STATUS.ERROR_MSG;
-      default: return appState.status;
-    }
-  });
-
   let displayStateLabel = $derived.by(() => {
     switch (appState.aiState) {
       case "idle": return STATUS.IDLE;
@@ -329,8 +320,6 @@
         >↺</button>
       </div>
 
-      <!-- Status text -->
-      <div class="status-row status-text">{displayStatus}</div>
     </div>
   </div>
 {/if}
