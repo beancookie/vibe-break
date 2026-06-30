@@ -197,7 +197,6 @@
       frameCamera(vrm);
 
       setStatus(STATUS.LOADED_VRM(meta.name));
-      setLoading(false);
     } catch (e: unknown) {
       if (myToken !== loadToken) return;
       modelLoading = false;
@@ -308,11 +307,14 @@
         } else {
           newAction.play();
         }
-        // Reveal the model now that the first action is playing.
-        // Until this point the scene was hidden in startLoad() to
-        // avoid flashing the bind pose.
+        // Force the mixer to apply the first frame of animation
+        // BEFORE making the model visible, so the user never sees
+        // the bind pose / rest pose for even a single frame.
+        current?.update(0);
+        mixer?.update(0);
         vrm.scene.visible = true;
         modelLoading = false;
+        setLoading(false);
         setStatus(STATUS.ANIM_PLAYING(name));
       })
       .catch((e: unknown) => {
