@@ -6,7 +6,7 @@ import {
   createVRMAnimationClip,
 } from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
-import { assetUrl } from "./assetUrl";
+import { readAssetBuffer } from "./assetUrl";
 import { logger } from "$lib/logger";
 
 let vrmLoader: GLTFLoader | null = null;
@@ -22,15 +22,8 @@ const getVrmaLoader = () =>
 const yieldToMain = () => new Promise<void>((r) => setTimeout(r, 0));
 
 async function fetchBuffer(url: string): Promise<ArrayBuffer> {
-  const finalUrl = await assetUrl(url);
-  logger.info("[VRM]", `fetchBuffer url=${url} resolved=${finalUrl}`);
-  const res = await fetch(finalUrl);
-  if (!res.ok) {
-    const msg = `HTTP ${res.status} for ${finalUrl}`;
-    logger.error("[VRM]", `fetchBuffer failed: ${msg}`);
-    throw new Error(msg);
-  }
-  const buf = await res.arrayBuffer();
+  logger.info("[VRM]", `fetchBuffer url=${url}`);
+  const buf = await readAssetBuffer(url);
   logger.debug("[VRM]", `fetchBuffer done size=${buf.byteLength}`);
   return buf;
 }

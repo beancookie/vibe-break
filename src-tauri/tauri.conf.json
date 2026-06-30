@@ -52,6 +52,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["resources/assets/*.vrm", "resources/assets/vrma/*.vrma", "resources/crawlers/*.lua"]
+    "resources": ["resources/assets/*.vrm", "resources/assets/vrma/**/*.vrma", "resources/crawlers/*.lua"]
   }
 }

@@ -18,12 +18,15 @@
     appState.selectedVrm;
     appState.selectedAnim;
     appState.petScale;
+    appState.counters;
     queueMicrotask(() => {
       const next = JSON.stringify({
         selectedVrm: appState.selectedVrm,
         selectedAnim: appState.selectedAnim,
         petScale: appState.petScale,
         alwaysOnTop: appState.alwaysOnTop,
+        locale: appState.locale,
+        counters: appState.counters,
       });
       if (next === persistedJson) return;
       persistedJson = next;

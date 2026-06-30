@@ -1,12 +1,15 @@
-import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { resourceDir, join } from "@tauri-apps/api/path";
+import { readFile } from "@tauri-apps/plugin-fs";
 
-export async function assetUrl(url: string): Promise<string> {
+export async function readAssetBuffer(url: string): Promise<ArrayBuffer> {
   if (isTauri()) {
     const resDir = await resourceDir();
-    const abs: string = await join(resDir, "resources", url);
-    const posix = abs.split("\\").join("/");
-    return convertFileSrc(posix);
+    const abs = await join(resDir, "resources", url);
+    const data = await readFile(abs);
+    return data.buffer;
   }
-  return "/" + url;
+  const res = await fetch("/" + url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return await res.arrayBuffer();
 }

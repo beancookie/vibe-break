@@ -1,36 +1,36 @@
-export const STATUS = {
-  INITIALIZING: "Initializing...",
-  NO_MODELS: "No .vrm models found. Drop files into src-tauri/resources/assets/ and rebuild.",
-  BROWSER_PREVIEW: "Browser preview mode. Run `pnpm tauri dev` to load real VRM models.",
-  SCAN_FAILED: "Asset scan failed:",
-  SCANNING_VRM: "[VRM] scanning…",
-  NO_VRMS: "[VRM] no models found",
-  LOADING_VRM: (name: string) => `Loading ${name}…`,
-  LOADED_VRM: (name: string) => `Loaded ${name}`,
-  VRM_LOAD_FAILED: (url: string, msg: string) => `[VRM] load FAILED ${url}: ${msg}`,
-  ANIM_PLAYING: (name: string) => `▶ ${name}`,
-  ANIM_ERROR: (msg: string) => `Anim error: ${msg}`,
-  ZOOM_PERCENT: (pct: number) => `🔍 ${pct}%`,
-  THINKING: "🤔 Thinking...",
-  DONE: "✅ Done!",
-  ERROR_MSG: "❌ Error",
-  SWITCHING_MODEL: "Switching model…",
-  SWITCHING_ANIM: "Switching animation…",
-} as const;
+import { getDict, type Dict, type StatusDict, type ErrorDict, type UiDict } from "$lib/i18n.svelte";
 
-export const ERROR = {
-  NO_APP_ROOT: "Vibe Break: cannot find #app element in the DOM.",
-  NOT_TAURI: "Asset listing requires the Tauri runtime. Run `pnpm tauri dev` instead of `pnpm dev`.",
-} as const;
+type DictSection = keyof Dict;
 
-export const UI = {
-  MENU_HEADER: "Vibe Break",
-  LABEL_MODEL: "Model",
-  LABEL_ANIMATION: "Animation",
-  OPTION_SCANNING: "scanning…",
-  OPTION_NO_VRM: "(no .vrm found)",
-  OPTION_PICK_ANIM: "— pick —",
-  BUTTON_REPLAY: "Replay animation",
-  BUTTON_STOP: "Stop animation",
-  BUTTON_ALWAYS_ON_TOP: "Always on top",
-} as const;
+let _appState: { locale: string } | null = null;
+
+export function initStrings(appStateRef: { locale: string }) {
+  _appState = appStateRef;
+}
+
+function getLocale() {
+  return _appState?.locale ?? "en";
+}
+
+function createReactiveProxy<S extends DictSection>(section: S): Dict[S] {
+  return new Proxy({} as Dict[S], {
+    get(_target, key: string | symbol) {
+      if (typeof key === "symbol") return undefined;
+      const val = getDict(getLocale())[section][key as keyof Dict[S]];
+      if (typeof val === "function") {
+        return (...args: unknown[]) => (val as (...a: unknown[]) => unknown)(...args);
+      }
+      return val;
+    },
+    ownKeys() {
+      return Reflect.ownKeys(getDict(getLocale())[section]);
+    },
+    getOwnPropertyDescriptor() {
+      return { enumerable: true, configurable: true };
+    },
+  });
+}
+
+export const STATUS = createReactiveProxy("STATUS") as StatusDict;
+export const ERROR = createReactiveProxy("ERROR") as ErrorDict;
+export const UI = createReactiveProxy("UI") as UiDict;

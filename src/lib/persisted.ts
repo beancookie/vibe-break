@@ -1,11 +1,14 @@
 import type { Store } from "@tauri-apps/plugin-store";
 import { isTauri } from "@tauri-apps/api/core";
+import type { McpCounters } from "$lib/stores.svelte";
 
 export interface PersistedState {
   selectedVrm: string;
   selectedAnim: string;
   petScale: number;
   alwaysOnTop: boolean;
+  locale: string;
+  counters: McpCounters;
 }
 
 const DEFAULTS: PersistedState = {
@@ -13,6 +16,8 @@ const DEFAULTS: PersistedState = {
   selectedAnim: "",
   petScale: 1.0,
   alwaysOnTop: false,
+  locale: "en",
+  counters: { filesWritten: 0, commandsRun: 0, errors: 0 },
 };
 
 const KEY = "app_state";

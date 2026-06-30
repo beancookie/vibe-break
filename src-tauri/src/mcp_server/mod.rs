@@ -30,7 +30,7 @@ fn scan_vrm_assets(app_handle: &tauri::AppHandle) -> Vec<serde_json::Value> {
         crate::collect_dir(&assets_dir, "vrm", "assets/", &mut out);
         let vrma_dir = assets_dir.join("vrma");
         if vrma_dir.exists() {
-            crate::collect_dir(&vrma_dir, "vrma", "assets/vrma/", &mut out);
+            crate::collect_dir_recursive(&vrma_dir, "vrma", "assets/vrma/", &mut out, true);
         }
         if !out.is_empty() {
             break;

@@ -1,5 +1,6 @@
 import { STATUS } from "$lib/strings";
 import { devLog } from "$lib/devLog";
+import type { Locale } from "$lib/i18n.svelte";
 
 export interface AssetEntry {
   name: string;
@@ -77,6 +78,9 @@ export const appState = $state({
   // Mouth / speaking animation
   mouthWeight: 0 as number,
 
+  // Locale
+  locale: "en" as Locale,
+
   // Action commands from MCP
   pendingExpression: null as PendingExpression | null,
   pendingBonePose: null as PendingBonePose | null,
@@ -141,13 +145,16 @@ export function recycleNews(text: string, link?: string) {
   if (i !== -1) {
     const item = appState.news[i];
     appState.news = [...appState.news.slice(0, i), ...appState.news.slice(i + 1), item];
-    devLog("stores", "recycleNews", text);
     return;
   }
   const match = text.match(/^\[(.+?)\]\s(.+)$/);
   if (!match) return;
   appState.news = [...appState.news, { source: match[1], title: match[2], link }];
-  devLog("stores", "recycleNews (rebuilt)", text);
+}
+
+export function resetCounters() {
+  appState.counters = { filesWritten: 0, commandsRun: 0, errors: 0 };
+  appState.thinkingPeriods = [];
 }
 
 

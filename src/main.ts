@@ -3,11 +3,14 @@ import "./app.css";
 import VrmViewer from "./components/VrmViewer.svelte";
 import { listAssets } from "$lib/three/loadAssets";
 import { isTauri, invoke } from "@tauri-apps/api/core";
-import { STATUS, ERROR } from "$lib/strings";
+import { STATUS, ERROR, initStrings } from "$lib/strings";
+import "$lib/extra-locales/zh";
 import { appState, setVrmList, setAnimList, setScanning, setStatus, setSelectedVrm, setSelectedAnim, setPetScale } from "$lib/stores.svelte";
 import { loadPersistedState } from "$lib/persisted";
 import { logger } from "$lib/logger";
 import { pushNews } from "$lib/stores.svelte";
+
+initStrings(appState);
 
 const target = document.getElementById("app") as HTMLDivElement | null;
 if (!target) {
@@ -21,6 +24,12 @@ async function restorePersisted(): Promise<void> {
   if (saved.selectedVrm) setSelectedVrm(saved.selectedVrm);
   if (saved.selectedAnim) setSelectedAnim(saved.selectedAnim);
   if (saved.petScale !== 1.0) setPetScale(saved.petScale);
+  if (saved.locale) {
+    appState.locale = saved.locale;
+  }
+  if (saved.counters) {
+    appState.counters = { ...appState.counters, ...saved.counters };
+  }
   if (saved.alwaysOnTop) {
     setScanning(true);
     try {
@@ -54,7 +63,18 @@ async function scanAssets(): Promise<void> {
   }
 
   if (!appState.selectedAnim && vrmas.length > 0) {
-    setSelectedAnim(vrmas[0].url);
+    const firstDance = vrmas.find((a) => a.url.includes("/dance/"));
+    if (firstDance) setSelectedAnim(firstDance.url);
+  }
+
+  if (appState.selectedAnim && vrmas.length > 0) {
+    const isDance = vrmas.some(
+      (a) => a.url === appState.selectedAnim && a.url.includes("/dance/")
+    );
+    if (!isDance) {
+      const firstDance = vrmas.find((a) => a.url.includes("/dance/"));
+      if (firstDance) setSelectedAnim(firstDance.url);
+    }
   }
 
   const idx = vrms.findIndex((v) => v.name === appState.selectedVrm);

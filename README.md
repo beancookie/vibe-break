@@ -96,6 +96,7 @@ vibe-break/
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── .mcp.json                         # MCP Server 配置（Claude Code 等连接用）
+├── opencode.json                     # MCP Server 配置（opencode 连接用）
 ├── .claude.json                      # Claude Code 项目指引
 ├── eslint.config.js
 ├── vitest.config.ts
@@ -169,11 +170,17 @@ pnpm test:watch    # 监听模式
 
 ## 🤖 MCP 配置
 
-本项目内置了 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) Server（端口 39876），允许 AI 编程助手（如 Claude Code）直接与运行时交互。
+本项目内置了 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) Server（端口 39876），允许 AI 编程助手直接与运行时交互。
+
+### MCP Server 启动
+
+MCP Server 随 Tauri 应用自动启动，绑定 `127.0.0.1:39876`。应用关闭后无法连接。
 
 ### MCP Client 配置
 
-#### 方式一：命令行配置（推荐）
+#### Claude Code
+
+**方式一：命令行（推荐）**
 
 ```bash
 claude mcp add vibe-break --transport http http://127.0.0.1:39876/
@@ -193,7 +200,7 @@ claude mcp list
 # 或在 Claude Code 中运行 /mcp
 ```
 
-#### 方式二：配置文件（`.mcp.json`）
+**方式二：配置文件（`.mcp.json`）**
 
 项目根目录已包含 `.mcp.json`：
 
@@ -210,13 +217,76 @@ claude mcp list
 
 配置生效后，在 Claude Code 中运行 `/mcp restart` 重启即可。
 
-#### 配置文件位置
+#### opencode
 
-| 位置 | 作用域 |
-|------|--------|
-| 项目根目录 `.mcp.json` | 仅当前项目 |
-| `~/.claude/settings.json` | 全局 |
-| `~/.claude/settings.local.json` | 全局（不提交 git），优先级最高 |
+项目根目录已包含 `opencode.json`，opencode 启动后自动读取：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "vibe-break": {
+      "type": "remote",
+      "url": "http://127.0.0.1:39876/"
+    }
+  }
+}
+```
+
+也可以添加到全局配置 `~/.config/opencode/opencode.json`。
+
+#### 其他编辑器
+
+| 编辑器 | 配置方式 |
+|--------|----------|
+| **Cursor** | 设置 → MCP Server → Add → `http://127.0.0.1:39876/`，或使用项目 `.mcp.json` |
+| **Windsurf** | 设置中添加 MCP 端点 `http://127.0.0.1:39876/` |
+| **Continue (VS Code 插件)** | 在 `~/.continue/config.json` 中添加 `experimental.mcpServers` |
+
+#### 配置文件位置汇总
+
+| 位置 | 工具 | 作用域 |
+|------|------|--------|
+| 项目根目录 `.mcp.json` | Claude Code / Cursor | 仅当前项目 |
+| 项目根目录 `opencode.json` | opencode | 仅当前项目 |
+| `~/.claude/settings.json` | Claude Code | 全局 |
+| `~/.claude/settings.local.json` | Claude Code | 全局（不提交 git），优先级最高 |
+| `~/.config/opencode/opencode.json` | opencode | 全局 |
+
+### 给其他项目安装
+
+要让你自己的项目也能连接 vibe-break，只需在目标项目根目录创建对应配置文件：
+
+**opencode** — `opencode.json`：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "vibe-break": {
+      "type": "remote",
+      "url": "http://127.0.0.1:39876/"
+    }
+  }
+}
+```
+
+**Claude Code** — `.mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "vibe-break": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:39876/"
+    }
+  }
+}
+```
+
+**其他编辑器**：参照上表配置 MCP Server 端点 `http://127.0.0.1:39876/`。
+
+> Vibe-break 应用必须保持运行状态才能接受 MCP 连接。
 
 ### 支持的 Tools
 
@@ -271,14 +341,6 @@ claude mcp list
   }
 }
 ```
-
-### Studio — 支持对接 MCP 的 AI 编辑器
-
-| 编辑器 | 配置方式 |
-|--------|----------|
-| **Cursor** | 在 Cursor 设置中配置 MCP Server，或通过项目级 `.mcp.json` |
-| **Windsurf** | 在设置中添加 MCP Server 端点 |
-| **Continue (VS Code 插件)** | 在 `~/.continue/config.json` 中添加 `experimental.mcpServers` |
 
 ## 🏗 架构概要
 

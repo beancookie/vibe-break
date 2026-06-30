@@ -23,14 +23,6 @@ export default defineConfig(async () => ({
     },
   },
 
-  build: {
-    rollupOptions: {
-      treeshake: false,
-    },
-    target: "es2021",
-    minify: "esbuild",
-  },
-
   clearScreen: false,
   server: {
     port: 1420,

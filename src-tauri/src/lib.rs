@@ -18,26 +18,31 @@ pub struct AssetEntry {
 }
 
 pub fn collect_dir(dir: &Path, ext: &str, prefix: &str, out: &mut Vec<AssetEntry>) {
+    collect_dir_recursive(dir, ext, prefix, out, false);
+}
+
+fn collect_dir_recursive(dir: &Path, ext: &str, prefix: &str, out: &mut Vec<AssetEntry>, recursive: bool) {
     let Ok(entries) = fs::read_dir(dir) else { return };
-    let mut found: Vec<AssetEntry> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.is_file())
-        .filter(|p| {
-            p.extension()
-                .and_then(|x| x.to_str())
-                .map(|x| x.eq_ignore_ascii_case(ext))
-                .unwrap_or(false)
-        })
-        .map(|p| {
-            let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let name = p.file_stem().and_then(|n| n.to_str()).unwrap_or(file_name);
-            AssetEntry {
-                name: name.to_string(),
-                url: format!("{prefix}{file_name}"),
+    let mut found: Vec<AssetEntry> = Vec::new();
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() && recursive {
+            let sub_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let sub_prefix = format!("{prefix}{sub_name}/");
+            collect_dir_recursive(&path, ext, &sub_prefix, out, true);
+        } else if path.is_file() {
+            if let Some(ex) = path.extension().and_then(|x| x.to_str()) {
+                if ex.eq_ignore_ascii_case(ext) {
+                    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or(file_name);
+                    found.push(AssetEntry {
+                        name: name.to_string(),
+                        url: format!("{prefix}{file_name}"),
+                    });
+                }
             }
-        })
-        .collect();
+        }
+    }
     found.sort_by(|a, b| a.url.cmp(&b.url));
     out.extend(found);
 }
@@ -71,7 +76,7 @@ fn list_assets(app: tauri::AppHandle) -> Result<Vec<AssetEntry>, String> {
         collect_dir(&assets_dir, "vrm", "assets/", &mut out);
         let vrma_dir = assets_dir.join("vrma");
         if vrma_dir.exists() {
-            collect_dir(&vrma_dir, "vrma", "assets/vrma/", &mut out);
+            collect_dir_recursive(&vrma_dir, "vrma", "assets/vrma/", &mut out, true);
         }
         if !out.is_empty() {
             let names: Vec<&str> = out.iter().map(|a| a.name.as_str()).collect();

@@ -1,17 +1,56 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { appState, bumpStopToken } from "$lib/stores.svelte";
-  import { UI } from "$lib/strings";
+  import { appState, resetCounters, type AiState } from "$lib/stores.svelte";
+  import { UI, STATUS } from "$lib/strings";
+  import { getSupportedLocales } from "$lib/i18n.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Button from "$lib/components/ui/button.svelte";
   import Separator from "$lib/components/ui/separator.svelte";
   import Label from "$lib/components/ui/label.svelte";
   import { logger } from "$lib/logger";
 
+  const STATE_COLORS: Record<AiState, string> = {
+    idle: "#4ade80",
+    thinking: "#fbbf24",
+    done: "#60a5fa",
+    error: "#f87171",
+  };
+
   // Menu state. Position is fixed (top-right corner of the window),
   // so we don't track x/y here - the CSS handles it.
   let open = $state(false);
   let pinned = $state(false);
+
+  // Thinking timer
+  let thinkingElapsed = $state("00:00");
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+
+  function startTimer() {
+    if (timerInterval) return;
+    timerInterval = setInterval(() => {
+      if (!appState.thinkingStart) return;
+      const elapsed = Math.floor((Date.now() - appState.thinkingStart) / 1000);
+      const m = String(Math.floor(elapsed / 60)).padStart(2, "0");
+      const s = String(elapsed % 60).padStart(2, "0");
+      thinkingElapsed = `${m}:${s}`;
+    }, 200);
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    thinkingElapsed = "00:00";
+  }
+
+  $effect(() => {
+    if (open && appState.aiState === "thinking") {
+      startTimer();
+    } else {
+      stopTimer();
+    }
+  })
 
   /**
    * Open the menu and refresh the always-on-top indicator. The menu
@@ -128,22 +167,6 @@
     }
   }
 
-  function replayAnim() {
-    const url = appState.selectedAnim;
-    if (!url) return;
-    appState.selectedAnim = "";
-    queueMicrotask(() => {
-      appState.selectedAnim = url;
-    });
-    close();
-  }
-
-  function stopAnim() {
-    appState.selectedAnim = "";
-    bumpStopToken();
-    close();
-  }
-
   async function togglePin() {
     const w = getCurrentWindow();
     const next = !pinned;
@@ -151,6 +174,31 @@
     pinned = next;
     appState.alwaysOnTop = next;
     close();
+  }
+
+  let currentLocale = $derived(appState.locale);
+  let locales = $derived(getSupportedLocales());
+
+  let displayStatus = $derived.by(() => {
+    switch (appState.aiState) {
+      case "thinking": return STATUS.THINKING;
+      case "done": return STATUS.DONE;
+      case "error": return STATUS.ERROR_MSG;
+      default: return appState.status;
+    }
+  });
+
+  let displayStateLabel = $derived.by(() => {
+    switch (appState.aiState) {
+      case "idle": return STATUS.IDLE;
+      case "thinking": return "Thinking";
+      case "done": return "Done";
+      case "error": return "Error";
+    }
+  });
+
+  function toggleLocale() {
+    appState.locale = currentLocale;
   }
 
   onMount(() => {
@@ -180,14 +228,24 @@
   >
     <!-- Header -->
     <div
-      class="text-muted-foreground px-2 pb-1.5 pt-1 text-[10px] font-semibold tracking-wider uppercase"
+      class="text-muted-foreground px-2 pb-1.5 pt-1 text-xs font-semibold tracking-wider uppercase flex items-center justify-between"
     >
-      {UI.MENU_HEADER}
+      <span>{UI.MENU_HEADER}</span>
+      <select
+        bind:value={currentLocale}
+        onclick={(e) => e.stopPropagation()}
+        onchange={toggleLocale}
+        class="border-input bg-background text-foreground h-5 w-20 rounded border px-1 text-[10px] shadow-sm focus:ring-1 focus:outline-none"
+      >
+        {#each locales as l (l.value)}
+          <option value={l.value}>{l.label}</option>
+        {/each}
+      </select>
     </div>
 
     <!-- Model picker -->
     <div class="flex items-center gap-2 px-2 py-1">
-      <Label class="text-muted-foreground w-10 text-[11px] font-normal">
+      <Label class="text-muted-foreground w-10 text-xs font-normal">
         {UI.LABEL_MODEL}
       </Label>
       <select
@@ -211,7 +269,7 @@
 
     <!-- Animation picker -->
     <div class="flex items-center gap-2 px-2 py-1">
-      <Label class="text-muted-foreground w-10 text-[11px] font-normal">
+      <Label class="text-muted-foreground w-10 text-xs font-normal">
         {UI.LABEL_ANIMATION}
       </Label>
       <select
@@ -222,35 +280,11 @@
         class="border-input bg-background text-foreground focus:ring-ring ring-offset-background placeholder:text-muted-foreground h-7 w-full rounded-md border px-2 text-xs shadow-sm focus:ring-1 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       >
         <option value="">{UI.OPTION_PICK_ANIM}</option>
-        {#each appState.animList as a (a.url)}
+        {#each appState.animList.filter((a) => a.url.includes("/dance/")) as a (a.url)}
           <option value={a.url}>{a.name}</option>
         {/each}
       </select>
     </div>
-
-    <Separator class="my-1" />
-
-    <!-- Replay / Stop -->
-    <Button
-      variant="ghost"
-      size="sm"
-      disabled={!appState.selectedAnim || appState.isLoading}
-      onclick={replayAnim}
-      class="w-full justify-start px-2 font-normal"
-    >
-      <span aria-hidden="true">▶</span>
-      <span>{UI.BUTTON_REPLAY}</span>
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="sm"
-      onclick={stopAnim}
-      class="w-full justify-start px-2 font-normal"
-    >
-      <span aria-hidden="true">■</span>
-      <span>{UI.BUTTON_STOP}</span>
-    </Button>
 
     <Separator class="my-1" />
 
@@ -259,7 +293,7 @@
       variant="ghost"
       size="sm"
       onclick={togglePin}
-      class="w-full justify-start px-2 font-normal"
+      class="w-full justify-start px-2 font-normal text-xs"
     >
       <span aria-hidden="true" class="w-4 text-center">
         {pinned ? "✓" : "　"}
@@ -267,14 +301,36 @@
       <span>{UI.BUTTON_ALWAYS_ON_TOP}</span>
     </Button>
 
-    <div class="text-muted-foreground mt-1 px-2 pt-1 pb-0 text-[10px]">
-      📝 {appState.counters.filesWritten}  ⚡ {appState.counters.commandsRun}
-    </div>
+    <!-- MCP Status -->
+    <Separator class="my-1" />
 
-    <div
-      class="text-muted-foreground px-2 pt-0.5 pb-0.5 text-[10px] italic"
-    >
-      {appState.status}
+    <div class="mcp-status px-3 py-2 bg-white/5 rounded-md text-xs">
+      <!-- AI State indicator -->
+      <div class="status-row">
+        <span
+          class="state-dot"
+          style="background: {STATE_COLORS[appState.aiState]}"
+        ></span>
+        <span class="status-label font-semibold">{displayStateLabel}</span>
+        {#if appState.aiState === "thinking"}
+          <span class="thinking-timer">⏱ {thinkingElapsed}</span>
+        {/if}
+      </div>
+
+      <!-- Counters -->
+      <div class="status-row counters">
+        <span title="Files written">📝{appState.counters.filesWritten}</span>
+        <span title="Commands run">⚡{appState.counters.commandsRun}</span>
+        <span title="Errors">❌{appState.counters.errors}</span>
+        <button
+          onclick={resetCounters}
+          class="ml-6 cursor-pointer border-none bg-transparent p-0 text-[12px] text-muted-foreground/80 hover:text-destructive transition-colors"
+          title="Reset counters"
+        >↺</button>
+      </div>
+
+      <!-- Status text -->
+      <div class="status-row status-text">{displayStatus}</div>
     </div>
   </div>
 {/if}
