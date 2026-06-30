@@ -1,4 +1,4 @@
-package com.luzhong.vibe_break
+package VibeBreak
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

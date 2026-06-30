@@ -15,7 +15,8 @@
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "clean": "node -e \"const fs=require('fs');['dist','node_modules','src-tauri/target'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}))\"",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:android:build": "pnpm tauri android build --apk"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.5.4",
