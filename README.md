@@ -12,11 +12,11 @@
 
 - 🎏 通过 Three.js 渲染 VRM 3D 角色
 - 🎭 支持加载多个 VRM 模型（自动扫描 `assets/` 目录）
-- 🕺 内置 19 个 VRMA 动画（Angry / Blush / Clapping / Goodbye / Jump / LookAround / Relax / Sad / Sleepy / Surprised / Thinking 等）
+- 🕺 内置 21 个 VRMA 动画（分动作/舞蹈两类），MCP 自动切换 Thinking / Clapping / Sad
 - 🧭 滚轮缩放模型，窗口按 3:4 比例自适应大小
 - 🪟 跨平台桌面端打包（Tauri 2：Windows / macOS / Linux）
 - 🔁 VRMA 动画 `LoopPingPong` 循环播放，消除跳帧
-- 💾 自动持久化偏好（选中模型、动画、缩放、窗口置顶）
+- 💾 自动持久化偏好（模型、动画、缩放、置顶、语言、计数器）
 - 🤖 内置 **MCP Server**（`streamable-http`，端口 39876），支持 13 个 tool（6 个报告 tool + 7 个操作 tool）
 - 💬 **EncouragementBubble** 打字机气泡，MCP message 实时显示，嘴部 BlendShape 联动
 - 📰 **新闻 Barrage 弹幕**：Rust Lua 爬虫引擎从 V2EX / 掘金拉取热点，CSS 弹幕滚动展示
@@ -54,13 +54,15 @@ vibe-break/
 │   ├── lib/
 │   │   ├── stores.svelte.ts          # 全局响应式状态（$state）
 │   │   ├── mcpBridge.svelte.ts       # MCP Tauri event listener
+│   │   ├── i18n.svelte.ts            # 多语言字典 + 注册机制
+│   │   ├── extra-locales/            # 独立语言包（zh.ts 等）
 │   │   ├── three/
 │   │   │   ├── useVrm.ts             # VRM/VRMA 加载管线
 │   │   │   ├── loadAssets.ts         # invoke list_assets
 │   │   │   └── assetUrl.ts           # asset:// URL 解析
 │   │   ├── persisted.ts              # Store 持久化
 │   │   ├── useWindowDrag.svelte.ts   # long-press 窗口拖拽
-│   │   ├── strings.ts                # UI 字符串常量
+│   │   ├── strings.ts                # 响应式多语言 Proxy（自动跟随 locale）
 │   │   ├── logger.ts                 # 结构化日志
 │   │   ├── errors.ts                 # 自定义错误类型
 │   │   ├── utils.ts                  # cn() 工具函数
@@ -90,7 +92,7 @@ vibe-break/
 │   │       └── plugin.rs             # Lua sandbox + HTTP 请求 + HTML 解析
 │   ├── resources/
 │   │   ├── assets/                   # VRM 模型（7 个）
-│   │   │   └── vrma/                 # VRMA 动画（19 个）
+│   │   │   └── vrma/                 # VRMA 动画（21 个，分 action/dance）
 │   │   └── crawlers/                 # Lua 爬虫脚本（v2ex.lua / juejin.lua）
 │   ├── capabilities/default.json     # 权限配置
 │   ├── Cargo.toml
@@ -147,7 +149,7 @@ pnpm test:watch    # 监听模式
 模型和动画在应用启动时由 Rust 端自动扫描，无需改前端代码：
 
 1. 将 `.vrm` 文件放入 `src-tauri/resources/assets/`
-2. 将 `.vrma` 文件放入 `src-tauri/resources/assets/vrma/`
+2. 将 `.vrma` 文件放入 `src-tauri/resources/assets/vrma/action/`（动作类）或 `src-tauri/resources/assets/vrma/dance/`（舞蹈类）
 3. 重启应用（`pnpm tauri dev` 或重新构建）
 
 资源通过 Tauri 的 `asset://` 协议加载。
@@ -346,9 +348,9 @@ claude mcp list
 
 ### 状态管理
 
-`appState` 使用 Svelte 5 `$state()` rune 定义在 `stores.svelte.ts` 中，是全局响应式对象。包含 VRM 状态（selectedVrm / selectedAnim / petScale）、AI 状态（aiState / counters / thinkingPeriods）、UI 状态（mcpUi / news / showNews）、以及 MCP 动作指令（pendingExpression / pendingBonePose / mouthWeight）。
+`appState` 使用 Svelte 5 `$state()` rune 定义在 `stores.svelte.ts` 中，是全局响应式对象。包含 VRM 状态（selectedVrm / selectedAnim / petScale）、AI 状态（aiState / counters / thinkingPeriods）、UI 状态（mcpUi / news / showNews / locale）、以及 MCP 动作指令（pendingExpression / pendingBonePose / mouthWeight）。
 
-持久化：`persisted.ts` 使用 `@tauri-apps/plugin-store` 在 `settings.json` 中保存用户偏好（selectedVrm / selectedAnim / petScale / alwaysOnTop），`VrmViewer.svelte` 中的 `$effect` 自动同步。
+持久化：`persisted.ts` 使用 `@tauri-apps/plugin-store` 在 `settings.json` 中保存用户偏好（selectedVrm / selectedAnim / petScale / alwaysOnTop / locale / counters），`VrmViewer.svelte` 中的 `$effect` 自动同步。
 
 ### 3D 场景主循环
 
@@ -365,10 +367,11 @@ VrmViewer (Canvas + Threlte)
 
 ```
 main.ts
-  ├─ loadPersistedState()           ← 恢复上次选中的模型/动画/缩放/置顶
+  ├─ loadPersistedState()           ← 恢复模型/动画/缩放/置顶/语言/counters
+  ├─ initStrings(appState)          ← 绑定响应式 locale 依赖
   ├─ scanAssets()
-  │    ├─ listAssets()              ← invoke Rust list_assets → 扫描 assets/
-  │    └─ 更新 vrmList / animList + 自动选择首个
+  │    ├─ listAssets()              ← invoke Rust list_assets → 递归扫描 assets/
+  │    └─ 更新 vrmList / animList + 自动选首个舞蹈
   ├─ startMcpBridge()               ← listen("mcp:event")
   └─ startNewsTimer()               ← invoke fetch_news → 每 10 分钟轮询
 
