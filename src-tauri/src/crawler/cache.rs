@@ -84,7 +84,7 @@ impl DedupCache {
     }
 
     fn cache_path(app: &tauri::AppHandle) -> PathBuf {
-        app.path().resource_dir()
+        app.path().app_data_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(CACHE_FILE)
     }
