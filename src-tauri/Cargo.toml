@@ -27,7 +27,7 @@ tauri-plugin-fs = "2"
 tokio = { version = "1", features = ["io-util", "net", "rt"] }
 pmcp = { version = "2.10", features = ["streamable-http"], default-features = false }
 async-trait = "0.1"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
 scraper = "0.27"
 futures = "0.3"
